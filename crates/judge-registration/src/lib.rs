@@ -36,10 +36,10 @@ pub mod verified_readiness;
 pub mod verified_scheduling;
 #[cfg(not(verus_keep_ghost))]
 pub use transition::{
-    ambiguity_repaired, downstream_validator, interpret, interpret_scheduling_with_reader,
-    interpret_with_reader, replacements, retirement_declaration, retirement_requests, reused_tools,
-    validate_retained_view, validate_test_retirement, views, views_for_collection_inputs_with,
-    views_with_reader,
+    ambiguity_repaired, downstream_validator, filemap_views, interpret,
+    interpret_scheduling_with_reader, interpret_with_reader, replacements, retirement_declaration,
+    retirement_requests, reused_tools, validate_retained_view, validate_test_retirement, views,
+    views_for_collection_inputs_with, views_with_reader,
 };
 #[cfg(not(verus_keep_ghost))]
 pub use verified_nodes::NodeKind;

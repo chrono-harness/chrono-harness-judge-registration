@@ -125,6 +125,25 @@ pub fn views_with_reader(
 ) -> Result<(Registrations, Registrations, Value), String> {
     views_using_reports(req, reader, None)
 }
+/// Resolve the same sealed request as an in-process registration consumer.
+pub fn filemap_views(req: &Request) -> Value {
+    let reader = match facts::Reader::for_request(req) {
+        Ok(reader) => reader,
+        Err(error) => return value!({"request_id":req.request_id,"error":error}),
+    };
+    let mut reply = match views_with_reader(req, &reader) {
+        Ok((old, current, _)) => value!({
+            "request_id":req.request_id,
+            "base":old.filemap_view(), "candidate":current.filemap_view(),
+        }),
+        Err(error) => value!({"request_id":req.request_id,"error":error}),
+    };
+    if reader.is_bound() {
+        reply["git_facts"] = reader.observation();
+    }
+    reply
+}
+
 /// Acquire only the declared historical decoder test's unit originals, and only
 /// if the fixed endpoint profiles actually require conversion. DELTA selection
 /// still belongs to FILEMAP/routes after registration interprets those endpoints.
