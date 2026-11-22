@@ -2233,3 +2233,42 @@ fn filemap_projection_preserves_declared_cost_data_and_test_group_identities() {
     assert!(nodes.contains(&json!("project:p")));
     assert!(nodes.contains(&json!("test:opaque-group")));
 }
+
+#[test]
+fn worktree_input_queries_preserve_selected_views_and_path_boundaries() {
+    let documents = support::values();
+    let entry = support::CONFIG;
+    let regs = chrono_judge_registration::Registrations::load(&documents, entry).unwrap();
+    let request = |input| {
+        let bytes = serde_json::to_vec(&input).unwrap();
+        chrono_judge_registration::worktree::query(bytes.as_slice())
+    };
+    let view =
+        request(json!({"operation":"snapshot","entry":entry,"documents":documents})).unwrap();
+    assert_eq!(view["effective_config"], regs.effective_config_path());
+    assert_eq!(&view["filemap"], regs.filemap());
+
+    let paths = [
+        ".chrono-harness/state/report",
+        ".chrono-harness/state-old/report",
+        "src/main.rs",
+    ];
+    let filtered =
+        request(json!({"operation":"nonartifact-paths","config":regs.config(),"paths":paths}))
+            .unwrap();
+    assert_eq!(filtered["paths"], json!([paths[1], paths[2]]));
+    let path = request(json!({"operation":"custody-config","config":regs.config()})).unwrap();
+    assert_eq!(path["filemap_path"], regs.config()["registries"]["filemap"]);
+    assert_eq!(
+        request(json!({"operation":"custody-filemap","filemap":regs.filemap()})).unwrap(),
+        json!({"valid":true})
+    );
+    assert!(request(json!({"operation":"custody-filemap","filemap":{}})).is_err());
+    assert!(
+        request(
+            json!({"operation":"custody-config","config":{"registries":{"filemap":"unvalidated"}}})
+        )
+        .is_err()
+    );
+    assert!(request(json!({"operation":"nonartifact-paths","config":{},"paths":paths})).is_err());
+}
