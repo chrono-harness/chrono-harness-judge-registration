@@ -109,6 +109,14 @@ impl Registrations {
     pub fn original_schemas(&self) -> &BTreeMap<String, (String, u64)> {
         &self.original_schemas
     }
+    /// Public FILEMAP projection. Historical definitions contribute node identities.
+    pub fn filemap_view(&self) -> Value {
+        serde_json::json!({
+            "path": self.config()["registries"]["filemap"],
+            "filemap": self.filemap(),
+            "nodes": self.nodes(),
+        })
+    }
     pub fn judges(&self) -> &Value {
         &self.judges
     }

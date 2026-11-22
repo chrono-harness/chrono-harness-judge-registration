@@ -2217,3 +2217,19 @@ fn public_test_owners_preserve_grouped_tests_and_reject_ambiguous_bindings() {
     assert!(error.contains("repeated action binding"), "{error}");
     assert!(output.is_empty());
 }
+
+#[test]
+fn filemap_projection_preserves_declared_cost_data_and_test_group_identities() {
+    let mut values = support::values();
+    let project = &mut values.get_mut(support::PROJECTS).unwrap()["projects"][1];
+    project["actions"]["second"] =
+        json!({"operation":"execute.second","tool":"sh","argv":["-c","exit 0"]});
+    project["test_groups"] = json!({"t":"execute","opaque-group":"second"});
+    let registrations = support::load(&values);
+    let view = registrations.filemap_view();
+    assert_eq!(view["path"], support::FM);
+    assert_eq!(view["filemap"], registrations.filemap().clone());
+    let nodes = view["nodes"].as_array().unwrap();
+    assert!(nodes.contains(&json!("project:p")));
+    assert!(nodes.contains(&json!("test:opaque-group")));
+}

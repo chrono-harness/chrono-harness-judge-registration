@@ -66,23 +66,37 @@ fn run(args: &[String]) -> u8 {
 fn main() -> std::process::ExitCode {
     use chrono_judge_registration::execution::ExecutionView;
     let mut args = std::env::args_os().skip(1);
-    let view = match (
-        args.next().as_deref().and_then(std::ffi::OsStr::to_str),
-        args.next(),
-    ) {
-        (Some("execution-methods"), None) => Some(ExecutionView::Methods),
-        (Some("test-owners"), None) => Some(ExecutionView::TestOwners),
-        _ => None,
-    };
-    if let Some(view) = view {
-        let result = read_request().and_then(|bytes| view.write(&bytes, std::io::stdout().lock()));
-        return match result {
-            Ok(()) => std::process::ExitCode::SUCCESS,
-            Err(error) => {
-                eprintln!("{error}");
-                2.into()
-            }
-        };
+    let operation = args.next();
+    if args.next().is_none() {
+        let operation = operation.as_deref().and_then(std::ffi::OsStr::to_str);
+        if matches!(
+            operation,
+            Some("execution-methods" | "test-owners" | "filemap-views")
+        ) {
+            let result = read_request().and_then(|bytes| {
+                let mut out = std::io::stdout().lock();
+                match operation {
+                    Some("execution-methods") => ExecutionView::Methods.write(&bytes, &mut out)?,
+                    Some("test-owners") => ExecutionView::TestOwners.write(&bytes, &mut out)?,
+                    _ => {
+                        let request = chrono_harness::decode(&bytes)?;
+                        serde_json::to_writer(
+                            &mut out,
+                            &chrono_judge_registration::filemap_views(&request),
+                        )
+                        .map_err(|error| error.to_string())?;
+                    }
+                }
+                out.flush().map_err(|error| error.to_string())
+            });
+            return match result {
+                Ok(()) => std::process::ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("{error}");
+                    2.into()
+                }
+            };
+        }
     }
     std::process::ExitCode::from(chrono_harness::logged_text_main(
         "chrono-judge-registration",
