@@ -35,6 +35,29 @@ pub fn snapshot_schema_for(r: &Registrations) -> &'static str {
 #[cfg(not(verus_keep_ghost))]
 pub use chrono_harness::input_file::observe_file;
 
+/// Project the registration-owned part of a capture from the caller's fixed documents.
+#[cfg(not(verus_keep_ghost))]
+pub fn capture_plan(input: impl std::io::Read) -> Result<Value, String> {
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Query {
+        config: String,
+        documents: BTreeMap<String, Value>,
+        unit: Option<String>,
+    }
+    let query: Query = serde_json::from_reader(input).map_err(|error| error.to_string())?;
+    let endpoint = Registrations::load(&query.documents, &query.config)?;
+    let scope = query
+        .unit
+        .map(|unit| chrono_harness::units::Scope::Unit { unit });
+    Ok(serde_json::json!({
+        "effective_config": endpoint.effective_config_path(),
+        "selection": endpoint.selection(),
+        "schema": snapshot_schema_for(&endpoint),
+        "required": required_files(&endpoint, scope.as_ref())?,
+    }))
+}
+
 verus! {
 
 pub const SNAPSHOT_SCHEMA: &'static str = "chrono-input-snapshot/v1";

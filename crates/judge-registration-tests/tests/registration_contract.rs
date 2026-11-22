@@ -2293,3 +2293,28 @@ fn classification_view_projects_changed_surfaces_and_interpreted_documents() {
     );
     assert_eq!(view["documents"], json!({support::FM:registry.filemap()}));
 }
+
+#[test]
+fn capture_plan_binds_the_input_set_and_rejects_unregistered_units() {
+    let mut values = support::values();
+    values.get_mut(support::CONFIG).unwrap()["environment"]["inputs"] = json!([
+        {"id":"sdk","location":"sdk.txt","sha256":"a".repeat(64)}
+    ]);
+    let mut input = json!({"config":support::CONFIG,"documents":values});
+    let query = |v: &Value| {
+        chrono_judge_registration::inputs::capture_plan(serde_json::to_vec(v).unwrap().as_slice())
+    };
+    let plan = query(&input).unwrap();
+    assert_eq!(
+        plan,
+        json!({"effective_config":support::CONFIG,"schema":"chrono-input-snapshot/v1",
+                             "required":["sdk"],"selection":null})
+    );
+    input["unit"] = json!("missing");
+    assert!(query(&input).is_err());
+    input["documents"]
+        .as_object_mut()
+        .unwrap()
+        .remove(support::PROJECTS);
+    assert!(query(&input).is_err());
+}
