@@ -1,0 +1,464 @@
+{
+  ".chrono-harness/ci/bootstrap-core.json": {
+    "schema": "chrono-bootstrap/v1",
+    "operations": [
+      "host.bootstrap-verus",
+      "build.runner",
+      "build.judge-ci",
+      "build.ci",
+      "build.worktree"
+    ],
+    "install": [
+      {
+        "source": "crates/runner/target/debug/chrono-harness",
+        "destination": ".chrono-harness/bin/chrono-harness"
+      },
+      {
+        "source": "crates/judge-ci/target/debug/chrono-judge-ci",
+        "destination": ".chrono-harness/bin/chrono-judge-ci"
+      },
+      {
+        "source": "crates/ci/target/debug/chrono-ci",
+        "destination": ".chrono-harness/bin/chrono-ci"
+      },
+      {
+        "source": "crates/worktree/target/debug/chrono-worktree",
+        "destination": ".chrono-harness/bin/chrono-worktree"
+      },
+      {
+        "source": ".chrono-harness/cache/bootstrap-owner-tooling/verus/package.zip",
+        "destination": ".chrono-harness/bin/verus.zip"
+      }
+    ]
+  },
+  ".chrono-harness/ci/bootstrap-cache.json": {
+    "schema": "chrono-bootstrap/v1",
+    "operations": [
+      "build.cache"
+    ],
+    "install": [
+      {
+        "source": "crates/cache/target/debug/chrono-cache",
+        "destination": ".chrono-harness/bin/chrono-cache"
+      }
+    ]
+  },
+  ".chrono-harness/ci/bootstrap-unit.json": {
+    "schema": "chrono-bootstrap/v1",
+    "projects": ".chrono-harness/projects.json",
+    "tools": {
+      "bash": "/bin/bash",
+      "tar": "/usr/bin/tar"
+    },
+    "operations": [
+      "host.verus-extract-shared"
+    ],
+    "entrypoint": {
+      "tool": "bash",
+      "script": ".chrono-harness/ci/bootstrap-native.sh"
+    },
+    "prerequisites": [
+      "host.bootstrap-shared-verify-core"
+    ]
+  },
+  ".chrono-harness/ci/bootstrap-shared.json": {
+    "schema": "chrono-host-startup/v1",
+    "directory": ".chrono-harness/startup/",
+    "profiles": {
+      "core": {
+        "config": ".chrono-harness/ci/bootstrap-core.json",
+        "build": true
+      },
+      "cache": {
+        "config": ".chrono-harness/ci/bootstrap-cache.json",
+        "build": false
+      }
+    },
+    "consumers": {
+      "unit_runner": [
+        "cache",
+        "core"
+      ]
+    }
+  },
+  ".chrono-harness/ci/units.json": {
+    "schema": "chrono-github-units/v1",
+    "persistent_cache": {
+      "program": ".chrono-harness/bin/chrono-cache"
+    },
+    "collection": {
+      "generator": ".chrono-harness/bin/chrono-ci",
+      "runner": ".chrono-harness/bin/chrono-harness",
+      "check_config": ".chrono-harness/ci/check.json"
+    },
+    "units": {
+      "runner": {
+        "bootstrap": [
+          "/bin/bash",
+          ".chrono-harness/ci/bootstrap-native.sh",
+          ".",
+          ".chrono-harness/ci/bootstrap-unit.json"
+        ]
+      }
+    },
+    "job_gating": {
+      "startup": {
+        "schema": "chrono-shared-startup/v1",
+        "directory": ".chrono-harness/startup/",
+        "consumers": {
+          "unit_runner": {
+            "need": "Run the current candidate canonical check and its registered preparation.",
+            "output_use": "Verify and install the detector startup outputs before cache preparation and the unchanged check.",
+            "install": [
+              "/bin/bash",
+              ".chrono-harness/ci/bootstrap-native.sh",
+              ".",
+              ".chrono-harness/ci/bootstrap-shared.json",
+              "install",
+              "unit_runner"
+            ]
+          }
+        }
+      },
+      "detector": {
+        "bootstrap": [
+          "/bin/bash",
+          ".chrono-harness/ci/bootstrap-native.sh",
+          ".",
+          ".chrono-harness/ci/bootstrap-shared.json",
+          "produce"
+        ]
+      }
+    }
+  },
+  ".chrono-harness/ci/check.json": {
+    "schema": "chrono-ci-check/v3",
+    "judge": {
+      "program": ".chrono-harness/bin/chrono-judge-ci"
+    },
+    "policy": {
+      "causal_consumption": {
+        "schema": "chrono-internal-causal-consumption/v1",
+        "shared_startup": [
+          {
+            "id": "runner-startup",
+            "units": ".chrono-harness/ci/units.json",
+            "startup": ".chrono-harness/ci/bootstrap-shared.json",
+            "consumer": "unit_runner",
+            "producer": "host.bootstrap-shared-produce",
+            "caller": "host.bootstrap-shared-install-unit_runner",
+            "data_outputs": {
+              ".chrono-harness/bin/verus.zip": {
+                "producer": "host.bootstrap-verus",
+                "consumer": "host.verus-extract-shared"
+              }
+            },
+            "evidence": {
+              "test": "test:host-bootstrap-native-tests",
+              "operation": "test.host-bootstrap-native-tests"
+            },
+            "preparation": {
+              "operation": "host.bootstrap-unit",
+              "config": ".chrono-harness/ci/bootstrap-unit.json",
+              "verifier": "host.bootstrap-shared-verify-core"
+            }
+          }
+        ]
+      },
+      "units": {
+        "runner": {
+          "tests": [
+            "test:host-bootstrap-native-tests"
+          ]
+        }
+      }
+    }
+  },
+  ".chrono-harness/git/macos-27.json": {
+    "registries": {
+      "judges": ".chrono-harness/judges.json",
+      "projects": ".chrono-harness/projects.json",
+      "filemap": ".chrono-harness/FILEMAP.json",
+      "workflow": ".chrono-harness/workflow.json"
+    },
+    "runner": {
+      "path": ".chrono-harness/bin/chrono-harness"
+    },
+    "canonical_check": {
+      "argv": [
+        ".chrono-harness/bin/chrono-harness",
+        "check"
+      ],
+      "profile": ".chrono-harness/ci/check.json",
+      "participation": {
+        "tool": "chrono-worktree"
+      }
+    },
+    "tools": [
+      {
+        "id": "chrono-ci",
+        "program": ".chrono-harness/bin/chrono-ci"
+      },
+      {
+        "id": "chrono-worktree",
+        "program": ".chrono-harness/bin/chrono-worktree"
+      },
+      {
+        "id": "bash",
+        "program": "/bin/bash"
+      }
+    ]
+  },
+  ".chrono-harness/projects.json": {
+    "projects": [
+      {
+        "id": "runner",
+        "actions": {
+          "build": {
+            "operation": "build.runner",
+            "tool": "bootstrap-native",
+            "argv": [
+              "compile",
+              ".",
+              ".chrono-harness/ci/runner-build.json"
+            ]
+          }
+        },
+        "kind": "production"
+      },
+      {
+        "id": "judge-ci",
+        "actions": {
+          "build": {
+            "operation": "build.judge-ci",
+            "tool": "cargo",
+            "argv": [
+              "build",
+              "--locked",
+              "--manifest-path",
+              "crates/judge-ci/Cargo.toml"
+            ]
+          }
+        },
+        "kind": "production"
+      },
+      {
+        "id": "ci",
+        "actions": {
+          "build": {
+            "operation": "build.ci",
+            "tool": "cargo",
+            "argv": [
+              "build",
+              "--locked",
+              "--manifest-path",
+              "crates/ci/Cargo.toml"
+            ]
+          }
+        },
+        "kind": "production"
+      },
+      {
+        "id": "worktree",
+        "actions": {
+          "build": {
+            "operation": "build.worktree",
+            "tool": "cargo",
+            "argv": [
+              "build",
+              "--locked",
+              "--manifest-path",
+              "crates/worktree/Cargo.toml"
+            ]
+          }
+        },
+        "kind": "production"
+      },
+      {
+        "id": "cache",
+        "actions": {
+          "build": {
+            "operation": "build.cache",
+            "tool": "cargo",
+            "argv": [
+              "build",
+              "--locked",
+              "--manifest-path",
+              "crates/cache/Cargo.toml"
+            ]
+          }
+        },
+        "kind": "production"
+      },
+      {
+        "id": "host-bootstrap-native-tests",
+        "actions": {
+          "execute": {
+            "operation": "test.host-bootstrap-native-tests",
+            "tool": "cargo",
+            "argv": [
+              "test",
+              "--locked",
+              "--manifest-path",
+              "crates/host-bootstrap-tests/Cargo.toml",
+              "--target-dir",
+              ".chrono-harness/cache/host-bootstrap-native-tests/target"
+            ]
+          }
+        },
+        "kind": "test",
+        "tests_for": "host-bootstrap-native"
+      }
+    ],
+    "scripts": [
+      {
+        "id": "host-bootstrap-launcher",
+        "actions": {
+          "verus": {
+            "operation": "host.bootstrap-verus",
+            "tool": "bash",
+            "argv": [
+              ".chrono-harness/ci/bootstrap-native.sh",
+              ".",
+              ".chrono-harness/ci/bootstrap-verus.json"
+            ]
+          },
+          "shared-produce": {
+            "operation": "host.bootstrap-shared-produce",
+            "tool": "bash",
+            "argv": [
+              ".chrono-harness/ci/bootstrap-native.sh",
+              ".",
+              ".chrono-harness/ci/bootstrap-shared.json",
+              "produce"
+            ]
+          },
+          "shared-verify-core": {
+            "operation": "host.bootstrap-shared-verify-core",
+            "tool": "bash",
+            "argv": [
+              ".chrono-harness/ci/bootstrap-native.sh",
+              ".",
+              ".chrono-harness/ci/bootstrap-shared.json",
+              "verify",
+              "core"
+            ]
+          },
+          "shared-install-unit_runner": {
+            "operation": "host.bootstrap-shared-install-unit_runner",
+            "tool": "bash",
+            "argv": [
+              ".chrono-harness/ci/bootstrap-native.sh",
+              ".",
+              ".chrono-harness/ci/bootstrap-shared.json",
+              "install",
+              "unit_runner"
+            ]
+          },
+          "unit": {
+            "operation": "host.bootstrap-unit",
+            "tool": "bash",
+            "argv": [
+              ".chrono-harness/ci/bootstrap-native.sh",
+              ".",
+              ".chrono-harness/ci/bootstrap-unit.json"
+            ]
+          },
+          "verus-download": {
+            "operation": "host.verus-download",
+            "tool": "bootstrap-native",
+            "argv": [
+              "download",
+              ".",
+              ".chrono-harness/ci/verus-macos-arm64.sha256",
+              "/usr/bin/curl",
+              "{operation-output}",
+              "https://github.com/verus-lang/verus/releases/download/release/0.2026.04.24.f8e1704/verus-0.2026.04.24.f8e1704-arm64-macos.zip"
+            ]
+          },
+          "verus-extract-shared": {
+            "operation": "host.verus-extract-shared",
+            "tool": "tar",
+            "argv": [
+              "-x",
+              "-f",
+              ".chrono-harness/bin/verus.zip",
+              "-s",
+              "|^verus-arm64-macos|.chrono-harness/bin/verus|",
+              "--no-same-owner"
+            ]
+          }
+        },
+        "test_script": "host-bootstrap-launcher-tests"
+      }
+    ]
+  },
+  ".chrono-harness/FILEMAP.json": {
+    "files": [
+      {
+        "path": ".chrono-harness/ci/units.json"
+      },
+      {
+        "path": ".chrono-harness/ci/bootstrap-shared.json"
+      },
+      {
+        "path": ".chrono-harness/ci/bootstrap-core.json"
+      },
+      {
+        "path": ".chrono-harness/ci/bootstrap-cache.json"
+      },
+      {
+        "path": ".chrono-harness/ci/bootstrap-unit.json"
+      },
+      {
+        "path": ".chrono-harness/ci/check.json"
+      }
+    ],
+    "execution_plans": {
+      "test:host-bootstrap-native-tests": {
+        "operations": [
+          "test.host-bootstrap-native-tests"
+        ],
+        "timeout_seconds": 60,
+        "output_limit_bytes": 1024
+      }
+    },
+    "execution_scheduling": {
+      "claims": {
+        "test.host-bootstrap-native-tests": {
+          "outputs": [
+            ".chrono-harness/cache/"
+          ]
+        },
+        "build.ci": {
+          "outputs": [
+            "crates/ci/target/"
+          ]
+        },
+        "build.judge-ci": {
+          "outputs": [
+            "crates/judge-ci/target/"
+          ]
+        },
+        "build.runner": {
+          "outputs": [
+            "crates/runner/target/",
+            ".chrono-harness/state/"
+          ]
+        },
+        "build.worktree": {
+          "outputs": [
+            "crates/worktree/target/"
+          ]
+        },
+        "build.cache": {
+          "outputs": [
+            "crates/cache/target/"
+          ]
+        }
+      }
+    }
+  },
+  ".chrono-harness/judges.json": {},
+  ".chrono-harness/workflow.json": {}
+}

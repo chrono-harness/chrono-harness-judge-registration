@@ -1,0 +1,79 @@
+[package]
+name = "chrono-judge-registration-tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+autotests = false
+
+[dependencies]
+chrono-registration-fixture = { path = "../registration-fixture" }
+chrono-test-process = { git = "https://github.com/chrono-harness/chrono-harness-runner.git", rev = "a1cff08f74d996d618372f20adc203d1b5904d50" }
+chrono-test-git = { git = "https://github.com/chrono-harness/chrono-harness-test-git.git", rev = "52c7a2fa2a3a43fcfcf41ae104a77c6ed4c458b5" }
+chrono-judge-registration = { path = "../judge-registration" }
+chrono-identifiers = { git = "https://github.com/chrono-harness/chrono-harness-identifiers.git", rev = "77f5059bac12d38630ab42a3b6f4ba4222fd7464" }
+verus_builtin_macros = "=0.0.0-2026-04-20-1748"
+sha1 = "0.10"
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+chrono-harness = { git = "https://github.com/chrono-harness/chrono-harness-runner.git", rev = "a1cff08f74d996d618372f20adc203d1b5904d50" }
+serde_json = "1"
+
+[[bin]]
+name = "chrono-test-registration-regression"
+path = "tests/support/regression_child.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "chrono-test-registration-git"
+path = "tests/support/git_profile.rs"
+test = false
+bench = false
+
+[dev-dependencies]
+tempfile = "3"
+
+[[test]]
+name = "registration_contract"
+path = "tests/registration_contract.rs"
+
+[[test]]
+name = "languages"
+path = "tests/languages.rs"
+
+[[test]]
+name = "verified_nodes"
+path = "tests/verified_nodes.rs"
+
+[[test]]
+name = "verified_scheduling"
+path = "tests/verified_scheduling.rs"
+
+[[test]]
+name = "verified_readiness"
+path = "tests/verified_readiness.rs"
+
+[[test]]
+name = "verified_input_coverage"
+path = "tests/verified_input_coverage.rs"
+
+[profile.dev.package.sha2]
+opt-level = 3
+
+[[bin]]
+name = "chrono-test-git-model"
+path = "tests/support/git_model.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "chrono-harness-test-cli"
+path = "tests/support/runner_cli.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "chrono-judge-registration-test-cli"
+path = "../judge-registration/src/main.rs"
+test = false
+bench = false
