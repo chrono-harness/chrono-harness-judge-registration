@@ -2149,3 +2149,71 @@ fn configuration_edges_select_exact_policy_without_changing_shared_graph() {
 
 #[path = "verified_consumption.rs"]
 mod verified_consumption;
+
+#[test]
+fn public_methods_keep_every_owner_and_reject_a_bad_registry_before_writing() {
+    use chrono_judge_registration::execution::ExecutionView;
+    let sample = |id, tool| {
+        json!({"id":id, "actions":{
+        "verify":{"operation":"check","tool":tool,"argv":["--fixture","two words"]}}})
+    };
+    let projects =
+        json!({"projects":[sample("one","compiler")],"scripts":[sample("two","checker")]});
+    let mut output = Vec::new();
+    ExecutionView::Methods
+        .write(&serde_json::to_vec(&projects).unwrap(), &mut output)
+        .unwrap();
+    let methods: Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(
+        methods,
+        json!({"check":[
+            {"owner":"project:one","operation":"check","tool":"compiler","argv":["--fixture","two words"]},
+            {"owner":"script:two","operation":"check","tool":"checker","argv":["--fixture","two words"]}
+        ]})
+    );
+    for (input, error) in [
+        (
+            br#"{"projects":[],"projects":[],"scripts":[]}"#.as_slice(),
+            "duplicate",
+        ),
+        (
+            br#"{"projects":[]}"#.as_slice(),
+            "projects collection missing",
+        ),
+        (
+            br#"{"projects":[],"scripts":[{"id":"s","actions":{"x":{"operation":"x"}}}]}"#
+                .as_slice(),
+            "tool missing",
+        ),
+    ] {
+        output.clear();
+        let failure = ExecutionView::Methods
+            .write(input, &mut output)
+            .unwrap_err();
+        assert!(failure.contains(error), "{failure}");
+        assert!(output.is_empty());
+    }
+}
+
+#[test]
+fn public_test_owners_preserve_grouped_tests_and_reject_ambiguous_bindings() {
+    use chrono_judge_registration::execution::ExecutionView;
+    let project = json!({"id":"suite","kind":"test","test_groups":{"suite":"default","extra":"extra"},
+        "actions":{"default":{"operation":"suite.check"},"extra":{"operation":"suite.extra"}}});
+    let mut input = json!({"projects":[project],"scripts":[]});
+    let mut output = Vec::new();
+    ExecutionView::TestOwners
+        .write(&serde_json::to_vec(&input).unwrap(), &mut output)
+        .unwrap();
+    assert_eq!(
+        serde_json::from_slice::<Value>(&output).unwrap(),
+        json!({"project:suite":["test:extra","test:suite"]})
+    );
+    input["projects"][0]["test_groups"]["extra"] = json!("default");
+    output.clear();
+    let error = ExecutionView::TestOwners
+        .write(&serde_json::to_vec(&input).unwrap(), &mut output)
+        .unwrap_err();
+    assert!(error.contains("repeated action binding"), "{error}");
+    assert!(output.is_empty());
+}
