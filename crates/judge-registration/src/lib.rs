@@ -35,6 +35,8 @@ pub mod verified_readiness;
 #[cfg(not(verus_keep_ghost))]
 pub mod verified_scheduling;
 #[cfg(not(verus_keep_ghost))]
+pub mod worktree;
+#[cfg(not(verus_keep_ghost))]
 pub use transition::{
     ambiguity_repaired, downstream_validator, filemap_views, interpret,
     interpret_scheduling_with_reader, interpret_with_reader, replacements, retirement_declaration,
@@ -68,12 +70,9 @@ pub fn read_custody_inputs(
     mut read: impl FnMut(&str) -> Result<Vec<u8>>,
 ) -> Result<(Value, Value)> {
     let config = facts::selected_config_with(config_path, &mut read)?;
-    schema::config(&config).map_err(|e| format!("config: {e}"))?;
-    let path = config["registries"]["filemap"]
-        .as_str()
-        .ok_or("missing filemap registry path")?;
+    let path = worktree::custody_filemap_path(&config)?;
     let filemap = chrono_harness::json(&read(path)?)?;
-    schema::filemap(&filemap).map_err(|e| format!("filemap: {e}"))?;
+    worktree::validate_custody_filemap(&filemap)?;
     Ok((config, filemap))
 }
 
@@ -162,6 +161,11 @@ fn strings(v: &Value) -> BTreeSet<String> {
 #[cfg(not(verus_keep_ghost))]
 pub fn nonartifact_paths(config: &Value, paths: &[String]) -> Vec<String> {
     let artifacts = facts::artifact_directories(config).expect("validated artifact declarations");
+    outside_artifacts(&artifacts, paths)
+}
+
+#[cfg(not(verus_keep_ghost))]
+fn outside_artifacts(artifacts: &[&str], paths: &[String]) -> Vec<String> {
     paths
         .iter()
         .filter(|p| !artifacts.iter().any(|a| p.starts_with(a)))

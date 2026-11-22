@@ -69,6 +69,21 @@ fn main() -> std::process::ExitCode {
     let operation = args.next();
     if args.next().is_none() {
         let operation = operation.as_deref().and_then(std::ffi::OsStr::to_str);
+        if operation == Some("worktree-inputs-v1") {
+            let result = chrono_judge_registration::worktree::query(std::io::stdin().lock())
+                .and_then(|reply| {
+                    let mut out = std::io::stdout().lock();
+                    serde_json::to_writer(&mut out, &reply).map_err(|e| e.to_string())?;
+                    out.flush().map_err(|e| e.to_string())
+                });
+            return match result {
+                Ok(()) => std::process::ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("{error}");
+                    2.into()
+                }
+            };
+        }
         if matches!(
             operation,
             Some("execution-methods" | "test-owners" | "filemap-views")
