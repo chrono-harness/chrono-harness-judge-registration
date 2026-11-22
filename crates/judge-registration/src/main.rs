@@ -69,13 +69,17 @@ fn main() -> std::process::ExitCode {
     let operation = args.next();
     if args.next().is_none() {
         let operation = operation.as_deref().and_then(std::ffi::OsStr::to_str);
-        if operation == Some("worktree-inputs-v1") {
-            let result = chrono_judge_registration::worktree::query(std::io::stdin().lock())
-                .and_then(|reply| {
-                    let mut out = std::io::stdout().lock();
-                    serde_json::to_writer(&mut out, &reply).map_err(|e| e.to_string())?;
-                    out.flush().map_err(|e| e.to_string())
-                });
+        if matches!(operation, Some("worktree-inputs-v1" | "capture-plan-v1")) {
+            let input = std::io::stdin().lock();
+            let result = match operation {
+                Some("capture-plan-v1") => chrono_judge_registration::inputs::capture_plan(input),
+                _ => chrono_judge_registration::worktree::query(input),
+            }
+            .and_then(|reply| {
+                let mut out = std::io::stdout().lock();
+                serde_json::to_writer(&mut out, &reply).map_err(|e| e.to_string())?;
+                out.flush().map_err(|e| e.to_string())
+            });
             return match result {
                 Ok(()) => std::process::ExitCode::SUCCESS,
                 Err(error) => {
