@@ -312,3 +312,32 @@ pub fn methods(projects: &Value) -> Result<BTreeMap<String, Vec<Method>>, String
     }
     Ok(out)
 }
+
+/// Read-only views of execution registrations consumed by release recipes and previews.
+pub enum ExecutionView {
+    Methods,
+    TestOwners,
+}
+
+impl ExecutionView {
+    pub fn write(&self, input: &[u8], mut output: impl std::io::Write) -> Result<(), String> {
+        let projects = chrono_harness::json(input)?;
+        match self {
+            Self::Methods => serde_json::to_writer(&mut output, &methods(&projects)?),
+            Self::TestOwners => {
+                let mut tests_by_owner: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+                for (test, bindings) in test_bindings(&projects)? {
+                    for binding in bindings {
+                        tests_by_owner
+                            .entry(binding.owner)
+                            .or_default()
+                            .insert(test.clone());
+                    }
+                }
+                serde_json::to_writer(&mut output, &tests_by_owner)
+            }
+        }
+        .map_err(|error| error.to_string())?;
+        output.flush().map_err(|error| error.to_string())
+    }
+}
