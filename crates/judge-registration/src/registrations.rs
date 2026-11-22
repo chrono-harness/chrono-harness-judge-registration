@@ -117,6 +117,33 @@ impl Registrations {
             "nodes": self.nodes(),
         })
     }
+    /// Provide interpreted documents for changed registry paths. The classifier
+    /// selects its semantic inputs and reads any additional named Git blobs.
+    pub fn classification_view(&self, changed: &BTreeSet<&str>) -> Value {
+        let paths = &self.config()["registries"];
+        let mut surfaces = BTreeMap::new();
+        for file in self.filemap()["files"].as_array().unwrap() {
+            let path = file["path"].as_str().unwrap();
+            if changed.contains(path) {
+                surfaces.entry(path).or_insert(&file["surface"]);
+            }
+        }
+        let documents: BTreeMap<_, _> = [
+            (self.effective_config_path(), self.config()),
+            (paths["judges"].as_str().unwrap(), self.judges()),
+            (paths["projects"].as_str().unwrap(), self.projects()),
+            (paths["filemap"].as_str().unwrap(), self.filemap()),
+            (paths["workflow"].as_str().unwrap(), self.workflow()),
+        ]
+        .into_iter()
+        .filter(|(path, _)| changed.contains(path))
+        .collect();
+        serde_json::json!({
+            "endpoint": {"workflow":paths["workflow"], "surfaces":surfaces,
+                         "semantic_fields":self.config()["semantic_fields"]},
+            "documents":documents, "warning_code":self.workflow()["mixed_change"]["code"],
+        })
+    }
     pub fn judges(&self) -> &Value {
         &self.judges
     }

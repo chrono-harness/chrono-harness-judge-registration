@@ -86,7 +86,7 @@ fn main() -> std::process::ExitCode {
         }
         if matches!(
             operation,
-            Some("execution-methods" | "test-owners" | "filemap-views")
+            Some("execution-methods" | "test-owners" | "filemap-views" | "classification-views-v1")
         ) {
             let result = read_request().and_then(|bytes| {
                 let mut out = std::io::stdout().lock();
@@ -95,11 +95,13 @@ fn main() -> std::process::ExitCode {
                     Some("test-owners") => ExecutionView::TestOwners.write(&bytes, &mut out)?,
                     _ => {
                         let request = chrono_harness::decode(&bytes)?;
-                        serde_json::to_writer(
-                            &mut out,
-                            &chrono_judge_registration::filemap_views(&request),
-                        )
-                        .map_err(|error| error.to_string())?;
+                        let views = if operation == Some("classification-views-v1") {
+                            chrono_judge_registration::classification_views(&request)
+                        } else {
+                            chrono_judge_registration::filemap_views(&request)
+                        };
+                        serde_json::to_writer(&mut out, &views)
+                            .map_err(|error| error.to_string())?;
                     }
                 }
                 out.flush().map_err(|error| error.to_string())

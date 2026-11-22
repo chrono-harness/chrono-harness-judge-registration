@@ -2272,3 +2272,24 @@ fn worktree_input_queries_preserve_selected_views_and_path_boundaries() {
     );
     assert!(request(json!({"operation":"nonartifact-paths","config":{},"paths":paths})).is_err());
 }
+
+#[test]
+fn classification_view_projects_changed_surfaces_and_interpreted_documents() {
+    let values = support::values();
+    let registry = support::load(&values);
+    let view = registry.classification_view(&[support::FM, "src.bin", "absent"].into());
+    assert_eq!(view["endpoint"]["workflow"], support::WORKFLOW);
+    assert_eq!(
+        view["endpoint"]["surfaces"],
+        json!({support::FM:"product","src.bin":"product"})
+    );
+    assert_eq!(
+        view["endpoint"]["semantic_fields"],
+        values[support::CONFIG]["semantic_fields"]
+    );
+    assert_eq!(
+        view["warning_code"],
+        values[support::WORKFLOW]["mixed_change"]["code"]
+    );
+    assert_eq!(view["documents"], json!({support::FM:registry.filemap()}));
+}
