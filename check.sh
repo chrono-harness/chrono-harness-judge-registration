@@ -8,6 +8,9 @@ cargo fmt --check --manifest-path crates/registration-fixture/Cargo.toml
 cargo fmt --check --manifest-path crates/judge-registration/Cargo.toml
 cargo fmt --check --manifest-path crates/judge-registration-tests/Cargo.toml
 cargo build --locked --manifest-path crates/judge-registration/Cargo.toml
+CHRONO_TEST_GIT=$(command -v chrono-test-git) || { echo "chrono-test-git is required by registration tests" >&2; exit 1; }
+CHRONO_TEST_GIT_PROFILE_BIN=$(command -v chrono-test-git-profile) || { echo "chrono-test-git-profile is required by registration tests" >&2; exit 1; }
+export CHRONO_TEST_GIT CHRONO_TEST_GIT_PROFILE_BIN
 cargo test --locked --manifest-path crates/judge-registration-tests/Cargo.toml
 
 prove() {

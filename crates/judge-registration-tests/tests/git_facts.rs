@@ -51,7 +51,7 @@ impl BoundHost {
         let real = chrono_harness::resolve_program(&root, "git", None).unwrap();
         let version = Command::new(&real).arg("--version").output().unwrap();
         assert!(version.status.success());
-        let helper = env!("CARGO_BIN_EXE_chrono-test-registration-git");
+        let helper = env!("CHRONO_TEST_GIT_PROFILE_BIN");
         fs::copy(helper, &program).unwrap();
         let shadow = state.join("ambient-bin");
         fs::create_dir(&shadow).unwrap();
