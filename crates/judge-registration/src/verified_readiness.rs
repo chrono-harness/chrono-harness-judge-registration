@@ -1,14 +1,5 @@
 //! full 检查直接消费的登记状态与输入闭合判断。
-#[cfg(not(verus_keep_ghost))]
-use chrono_harness::verus;
-#[cfg(verus_keep_ghost)]
-use vstd::prelude::*;
-
-#[cfg(verus_keep_ghost)]
-extern crate chrono_identifiers as identifiers;
-#[cfg(not(verus_keep_ghost))]
-use chrono_harness::verified_identifiers as identifiers;
-use identifiers::equal_text;
+use vstd::{contrib::exec_spec::ExecSpecEq, prelude::*};
 
 verus! {
 
@@ -23,7 +14,7 @@ pub fn registry_active(status: Option<&str>) -> (ready: bool)
     ensures ready == active(status),
 {
     match status {
-        Some(text) => equal_text(text, "active"),
+        Some(text) => <&str>::exec_eq(text, "active"),
         None => false,
     }
 }
@@ -41,8 +32,8 @@ pub fn input_ready<T>(
 ) -> (ready: bool)
     ensures ready == ready_inputs(enforcement, closure, unresolved),
 {
-    (match enforcement { Some(text) => equal_text(text, "enabled"), None => false })
-        && (match closure { Some(text) => equal_text(text, "declared-complete"), None => false })
+    (match enforcement { Some(text) => <&str>::exec_eq(text, "enabled"), None => false })
+        && (match closure { Some(text) => <&str>::exec_eq(text, "declared-complete"), None => false })
         && (match unresolved { Some(inputs) => inputs.len() == 0, None => false })
 }
 
@@ -64,7 +55,7 @@ pub fn endpoint_snapshot_matches(
 {
     if schema_present || files > 0 || (strict_environment && inherited > 0) {
         match actual {
-            Some(text) => equal_text(text, expected),
+            Some(text) => <&str>::exec_eq(text, expected),
             None => false,
         }
     } else {

@@ -6,11 +6,11 @@ publish = false
 autotests = false
 
 [dependencies]
+vstd = "=0.0.0-2026-04-20-1748"
 chrono-registration-fixture = { path = "../registration-fixture" }
 chrono-test-process = { git = "https://github.com/chrono-harness/chrono-harness-runner.git", rev = "a1cff08f74d996d618372f20adc203d1b5904d50" }
 chrono-test-git = { git = "https://github.com/chrono-harness/chrono-harness-test-git.git", rev = "52c7a2fa2a3a43fcfcf41ae104a77c6ed4c458b5" }
 chrono-judge-registration = { path = "../judge-registration" }
-chrono-identifiers = { git = "https://github.com/chrono-harness/chrono-harness-identifiers.git", rev = "77f5059bac12d38630ab42a3b6f4ba4222fd7464" }
 verus_builtin_macros = "=0.0.0-2026-04-20-1748"
 sha1 = "0.10"
 sha2 = "0.10"

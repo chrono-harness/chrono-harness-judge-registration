@@ -1,15 +1,6 @@
 //! Input-coverage row state is a proved policy; JSON remains an external adapter.
 #![allow(unexpected_cfgs)]
-#[cfg(not(verus_keep_ghost))]
-use chrono_harness::verus;
-#[cfg(verus_keep_ghost)]
-use vstd::prelude::*;
-
-#[cfg(verus_keep_ghost)]
-extern crate chrono_identifiers as identifiers;
-#[cfg(not(verus_keep_ghost))]
-use chrono_harness::verified_identifiers as identifiers;
-use identifiers::equal_text;
+use vstd::{contrib::exec_spec::ExecSpecEq, prelude::*};
 
 verus! {
 
@@ -35,12 +26,12 @@ pub fn row_state_valid(
         closure_status@ == "declared-complete"@,
     ),
 {
-    let declared_complete = equal_text(closure_status, "declared-complete");
-    if equal_text(state, "bound") || equal_text(state, "absent") {
+    let declared_complete = <&str>::exec_eq(closure_status, "declared-complete");
+    if <&str>::exec_eq(state, "bound") || <&str>::exec_eq(state, "absent") {
         binding_count > 0
-    } else if equal_text(state, "not-applicable") || equal_text(state, "unresolved") {
+    } else if <&str>::exec_eq(state, "not-applicable") || <&str>::exec_eq(state, "unresolved") {
         binding_count == 0
-            && !(equal_text(state, "unresolved") && declared_complete)
+            && !(<&str>::exec_eq(state, "unresolved") && declared_complete)
     } else {
         false
     }
@@ -54,7 +45,7 @@ pub open spec fn absent_state(state: Seq<char>) -> bool {
 pub fn is_absent(state: &str) -> (absent: bool)
     ensures absent == absent_state(state@),
 {
-    equal_text(state, "absent")
+    <&str>::exec_eq(state, "absent")
 }
 
 }
