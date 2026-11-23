@@ -2361,3 +2361,26 @@ fn classification_documents_read_only_missing_selected_paths() {
     .unwrap_err();
     assert!(error.starts_with("E_SEMANTIC_INPUT: extra: duplicate JSON member"));
 }
+
+#[test]
+fn input_profile_keeps_credentials_out_of_snapshots_and_validates_optional_units() {
+    let config = serde_json::json!({"schema_version":4,"environment":{"inherit":["PATH","TOKEN"],"values":{},"credential_environment":["TOKEN"]},"execution_units":"malformed"});
+    let query = |config: &serde_json::Value, inspect| {
+        let q = serde_json::json!({"config":config,"inspect_execution_units":inspect});
+        chrono_judge_registration::inputs::input_profile(serde_json::to_vec(&q).unwrap().as_slice())
+    };
+    assert_eq!(
+        query(&config, false).unwrap(),
+        serde_json::json!({"credential_environment":["TOKEN"],"has_execution_units":null})
+    );
+    assert!(query(&config, true).is_err());
+    let mut missing = config.clone();
+    missing.as_object_mut().unwrap().remove("execution_units");
+    assert_eq!(query(&missing, true).unwrap()["has_execution_units"], false);
+    missing["environment"]["credential_environment"] = serde_json::json!(["UNDECLARED"]);
+    assert!(
+        query(&missing, false)
+            .unwrap_err()
+            .contains("invalid acquisition credential environment binding")
+    );
+}

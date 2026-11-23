@@ -27,6 +27,29 @@ pub fn snapshot_schema_for(r: &Registrations) -> &'static str {
 #[cfg(not(verus_keep_ghost))]
 pub use chrono_harness::input_file::observe_file;
 
+/// Report the registration policy needed to collect inputs at a fixed endpoint.
+#[cfg(not(verus_keep_ghost))]
+pub fn input_profile(input: impl std::io::Read) -> Result<Value, String> {
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Query {
+        config: Value,
+        inspect_execution_units: bool,
+    }
+    let query: Query = serde_json::from_reader(input).map_err(|error| error.to_string())?;
+    let credentials = if query.config["schema_version"] == 4 {
+        chrono_harness::prepared::credential_environment(&query.config)?
+    } else {
+        Default::default()
+    };
+    let units = if query.inspect_execution_units {
+        Some(chrono_harness::units::full_execution_units(&query.config)?.is_some())
+    } else {
+        None
+    };
+    Ok(serde_json::json!({"credential_environment":credentials,"has_execution_units":units}))
+}
+
 /// Project the registration-owned part of a capture from the caller's fixed documents.
 #[cfg(not(verus_keep_ghost))]
 pub fn capture_plan(input: impl std::io::Read) -> Result<Value, String> {

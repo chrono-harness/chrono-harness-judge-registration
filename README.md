@@ -48,3 +48,5 @@ routes 取得 FILEMAP 的退役测试后，可以用 `test-retirements-v1` 的 `
 `scoped-execution-v1` 读取一个固定端点的 `filemap`、`projects` 和 `artifacts`。FILEMAP 可只提供 `schema_version`、`execution_plans`、`execution_scheduling` 和 `reference_syntax`。命令校验项目、计划限额、调度声明与引用语法，成功后输出与 `scoped-test-bindings-v1` 相同的绑定表。v1 使用宿主声明的计划。无效登记写入 stderr 并退出 2。
 
 `chrono-judge-registration classification-inputs-v1 SELECTOR` 从 stdin 接收封存的原生判官请求。它解释两个固定端点，将 DELTA、登记、前置 impact 和 costs 及其绑定传给调用者给出的绝对路径程序 `SELECTOR plan-classification-v1`。选择器返回两个端点所需的路径数组 `base`、`candidate` 和透传的 `context`。registration 只接受已声明且在对应 DELTA 端点存在的路径，优先使用解释后的登记文档，其余从对应提交读取。stdout 返回 runner judge-pipeline 的输入生产者响应，成功和业务失败均保留本次已执行的 Git 读取记录。
+
+`chrono-judge-registration input-profile-v1` 接收含 `config` 与 `inspect_execution_units` 的 JSON。返回 `credential_environment` 名称，以及需要检查时经核对的 `has_execution_units`。inputs 以此决定采集时省去哪些环境变量，以及组合快照是否需要按单元计算输入。

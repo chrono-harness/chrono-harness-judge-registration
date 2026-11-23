@@ -97,6 +97,7 @@ fn main() -> std::process::ExitCode {
             Some(
                 "worktree-inputs-v1"
                     | "capture-plan-v1"
+                    | "input-profile-v1"
                     | "collection-inputs-v1"
                     | "route-views-v1"
                     | "route-inputs-v1"
@@ -132,6 +133,7 @@ fn main() -> std::process::ExitCode {
                     .and_then(|root| {
                         chrono_judge_registration::workflow_views::query(&root, input)
                     }),
+                Some("input-profile-v1") => chrono_judge_registration::inputs::input_profile(input),
                 Some("capture-plan-v1") => chrono_judge_registration::inputs::capture_plan(input),
                 Some("collection-inputs-v1") => {
                     chrono_judge_registration::snapshot_queries::composition(input)
