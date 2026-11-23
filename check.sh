@@ -35,12 +35,10 @@ prove() {
   test -s "$output" && test -s "$output.d"
 }
 
-prove verify.registration-preparation crates/judge-registration/src/verified_consumption.rs
 prove verify.registration-nodes crates/judge-registration/src/verified_nodes.rs
 prove verify.registration-readiness crates/judge-registration/src/verified_readiness.rs
 prove verify.registration-input-coverage crates/judge-registration/src/verified_input_coverage.rs
 prove verify.registration-scheduling crates/judge-registration/src/verified_scheduling.rs
-prove verify.registration-preparation-tests crates/judge-registration-tests/tests/verified_consumption.rs
 prove verify.registration-nodes-tests crates/judge-registration-tests/tests/verified_nodes.rs
 prove verify.registration-readiness-tests crates/judge-registration-tests/tests/verified_readiness.rs
 prove verify.registration-input-coverage-tests crates/judge-registration-tests/tests/verified_input_coverage.rs

@@ -10,14 +10,14 @@ pub use schema::{
 #[cfg(not(verus_keep_ghost))]
 pub mod classification_inputs;
 #[cfg(not(verus_keep_ghost))]
-pub mod consumption;
-#[cfg(not(verus_keep_ghost))]
 pub mod execution;
 #[cfg(not(verus_keep_ghost))]
 pub mod impact_views;
 #[cfg(not(verus_keep_ghost))]
 mod input_coverage;
 pub mod inputs;
+#[cfg(not(verus_keep_ghost))]
+pub mod project_views;
 #[cfg(not(verus_keep_ghost))]
 mod registrations;
 #[cfg(not(verus_keep_ghost))]
@@ -28,9 +28,6 @@ pub mod snapshot_queries;
 pub mod test_retirements;
 #[cfg(not(verus_keep_ghost))]
 mod transition;
-#[allow(unexpected_cfgs)]
-#[cfg(not(verus_keep_ghost))]
-pub mod verified_consumption;
 #[allow(unexpected_cfgs)]
 #[cfg(not(verus_keep_ghost))]
 pub mod verified_input_coverage;

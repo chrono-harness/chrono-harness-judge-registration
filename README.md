@@ -1,5 +1,7 @@
 # chrono-harness-judge-registration
 
+`chrono-judge-registration input-profile-v1` 接收含 `config` 与 `inspect_execution_units` 的 JSON。返回 `credential_environment` 名称，以及需要检查时经核对的 `has_execution_units`。inputs 以此决定采集时省去哪些环境变量，以及组合快照是否需要按单元计算输入。
+
 验证项目登记、执行方法与消费合同。
 
 使用 `cargo build --locked --manifest-path crates/judge-registration/Cargo.toml` 构建。安装 Verus 0.2026.04.24.f8e1704，运行 `VERUS=/path/to/verus ./check.sh` 检查格式、构建、测试及证明。
@@ -49,4 +51,6 @@ routes 取得 FILEMAP 的退役测试后，可以用 `test-retirements-v1` 的 `
 
 `chrono-judge-registration classification-inputs-v1 SELECTOR` 从 stdin 接收封存的原生判官请求。它解释两个固定端点，将 DELTA、登记、前置 impact 和 costs 及其绑定传给调用者给出的绝对路径程序 `SELECTOR plan-classification-v1`。选择器返回两个端点所需的路径数组 `base`、`candidate` 和透传的 `context`。registration 只接受已声明且在对应 DELTA 端点存在的路径，优先使用解释后的登记文档，其余从对应提交读取。stdout 返回 runner judge-pipeline 的输入生产者响应，成功和业务失败均保留本次已执行的 Git 读取记录。
 
-`chrono-judge-registration input-profile-v1` 接收含 `config` 与 `inspect_execution_units` 的 JSON。返回 `credential_environment` 名称，以及需要检查时经核对的 `has_execution_units`。inputs 以此决定采集时省去哪些环境变量，以及组合快照是否需要按单元计算输入。
+projects 使用 `project-views-v1` 解释固定端点。标准输入提供封存的 `request`、两端按路径索引的 UTF-8 原文 `originals` 和是否在当前检出核验输入的 `validate_inputs`。输出以请求 ID 和提交对绑定登记视图、实际配置路径、已选 FILEMAP、配对归属、测试操作及退役声明。历史转换产生的 Git 观察随结果返回。登记错误保留在 `error`。
+
+`project-evidence-v1` 接收原 `request`、已解释的 `view` 和 `evidence`。`live` 模式在执行后复核现场输入，`retained` 从调用方提供的产物映射和可选运输位置读取原件，`unit` 核对原登记视图后将有效输入投影到单元。成功返回请求 ID 和有效输入，失败写入标准错误并退出 2。`check-project-registry-v1` 接收独立的项目登记文档，调用相同的结构校验，成功返回 JSON null。
