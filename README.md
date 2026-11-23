@@ -12,6 +12,8 @@
 
 `test-bindings-v1` 读取同一份项目登记，按测试 ID 输出全部绑定。每条绑定包含 owner、action 和 operation。CI 用它按登记的终止操作执行测试，并把受影响的测试关联到所有者。
 
+`scoped-test-bindings-v1` 用于 scoped CI，输入和输出与上面的绑定查询相同。项目登记 v2 先通过完整 schema 校验，再返回绑定。v1 沿用 scoped CI 读取旧登记时的绑定规则。错误写入 stderr 并退出 2。
+
 `chrono-judge-registration filemap-views` 接受一个封存的 chrono-judge/v1 请求。在两个固定端点上按判官协议核对登记，保留历史转换和已有视图的绑定检查。成功时输出 request_id、base、candidate，每端包含 FILEMAP 登记路径、解释后的文档和节点 ID。登记拒绝时输出相同 request_id 和原始 error。启用 Git 观察时两种结果都带 git_facts。读取、解码或写出失败时退出 2。成本判官据此读取两端的成本声明。
 
 `chrono-judge-registration worktree-inputs-v1` 从 stdin 读取一个 JSON 对象。成功时 stdout 返回 JSON 并退出 0，拒绝输入时在 stderr 给出原因并退出 2。工作树提供已读取的宿主数据，保留自己的 Git 读取收据。

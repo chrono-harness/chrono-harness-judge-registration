@@ -309,6 +309,7 @@ pub enum ExecutionView {
     Methods,
     TestOwners,
     TestBindings,
+    ScopedTestBindings,
 }
 
 impl ExecutionView {
@@ -317,6 +318,14 @@ impl ExecutionView {
         match self {
             Self::Methods => serde_json::to_writer(&mut output, &methods(&projects)?),
             Self::TestBindings => serde_json::to_writer(&mut output, &test_bindings(&projects)?),
+            Self::ScopedTestBindings => {
+                let bindings = if projects["schema_version"] == 2 {
+                    crate::schema::project_bindings(&projects)?
+                } else {
+                    test_bindings(&projects)?
+                };
+                serde_json::to_writer(&mut output, &bindings)
+            }
             Self::TestOwners => {
                 let mut tests_by_owner: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
                 for (test, bindings) in test_bindings(&projects)? {

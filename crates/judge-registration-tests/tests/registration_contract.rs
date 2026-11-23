@@ -2117,6 +2117,38 @@ fn public_test_owners_preserve_grouped_tests_and_reject_ambiguous_bindings() {
 }
 
 #[test]
+fn scoped_test_bindings_validate_v2_before_returning_the_map() {
+    use chrono_judge_registration::execution::ExecutionView;
+    let input = &support::values()[support::PROJECTS];
+    let mut v2 = input.clone();
+    v2["schema_version"] = json!(2);
+    for key in ["projects", "scripts"] {
+        for row in v2[key].as_array_mut().unwrap() {
+            row["language"] = json!("rust");
+        }
+    }
+    let query = |view: ExecutionView, doc: &Value| {
+        let mut output = Vec::new();
+        let result = view.write(&serde_json::to_vec(doc).unwrap(), &mut output);
+        (result, output)
+    };
+    let expected = query(ExecutionView::TestBindings, &v2);
+    assert!(expected.0.is_ok());
+    assert_eq!(query(ExecutionView::ScopedTestBindings, &v2), expected);
+    v2["extra"] = json!(true);
+    let error = chrono_judge_registration::validate_projects(&v2).unwrap_err();
+    assert_eq!(
+        query(ExecutionView::ScopedTestBindings, &v2),
+        (Err(error), Vec::new())
+    );
+    let legacy = json!({"schema_version":1,"projects":[],"scripts":[],"extra":true});
+    assert_eq!(
+        query(ExecutionView::ScopedTestBindings, &legacy),
+        (Ok(()), b"{}".to_vec())
+    );
+}
+
+#[test]
 fn filemap_projection_preserves_declared_cost_data_and_test_group_identities() {
     let mut values = support::values();
     let project = &mut values.get_mut(support::PROJECTS).unwrap()["projects"][1];
