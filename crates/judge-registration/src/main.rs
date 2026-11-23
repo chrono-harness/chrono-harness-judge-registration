@@ -102,6 +102,7 @@ fn main() -> std::process::ExitCode {
                     | "project-views-v1"
                     | "project-evidence-v1"
                     | "check-project-registry-v1"
+                    | "check-documents-v1"
                     | "route-views-v1"
                     | "route-inputs-v1"
                     | "execution-declarations-v1"
@@ -114,6 +115,9 @@ fn main() -> std::process::ExitCode {
         ) {
             let input = std::io::stdin().lock();
             let result = match operation {
+                Some("check-documents-v1") => {
+                    chrono_judge_registration::check_documents(input).map(serde_json::Value::String)
+                }
                 Some("project-views-v1") => chrono_judge_registration::project_views::views(input),
                 Some("check-project-registry-v1") => {
                     chrono_judge_registration::project_views::check_projects(input)

@@ -2401,3 +2401,16 @@ fn input_profile_keeps_credentials_out_of_snapshots_and_validates_optional_units
             .contains("invalid acquisition credential environment binding")
     );
 }
+
+#[test]
+fn checked_documents_return_the_admitted_policy_and_reject_a_missing_registry() {
+    let mut documents = support::values();
+    let check = |documents: &support::Values| {
+        let bytes =
+            serde_json::to_vec(&json!({"entry":support::CONFIG,"documents":documents})).unwrap();
+        chrono_judge_registration::check_documents(bytes.as_slice())
+    };
+    assert_eq!(check(&documents).unwrap(), support::CONFIG);
+    documents.remove(support::WORKFLOW);
+    assert_eq!(check(&documents).unwrap_err(), "missing registry bytes");
+}

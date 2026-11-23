@@ -56,3 +56,5 @@ routes 取得 FILEMAP 的退役测试后，可以用 `test-retirements-v1` 的 `
 projects 使用 `project-views-v1` 解释固定端点。标准输入提供封存的 `request`、两端按路径索引的 UTF-8 原文 `originals` 和是否在当前检出核验输入的 `validate_inputs`。输出以请求 ID 和提交对绑定登记视图、实际配置路径、已选 FILEMAP、配对归属、测试操作及退役声明。历史转换产生的 Git 观察随结果返回。登记错误保留在 `error`。
 
 `project-evidence-v1` 接收原 `request`、已解释的 `view` 和 `evidence`。`live` 模式在执行后复核现场输入，`retained` 从调用方提供的产物映射和可选运输位置读取原件，`unit` 核对原登记视图后将有效输入投影到单元。成功返回请求 ID 和有效输入，失败写入标准错误并退出 2。`check-project-registry-v1` 接收独立的项目登记文档，调用相同的结构校验，成功返回 JSON null。
+
+CI 向 `check-documents-v1` 的 stdin 提交 JSON，`entry` 为登记入口，`documents` 按路径提供该 Git 端点的文档。程序核验所有登记后向 stdout 写入选中的有效配置路径（JSON 字符串），退出 0。输入或登记有误时向 stderr 写入原因并退出 2。
