@@ -17,6 +17,8 @@ pub mod impact_views;
 mod input_coverage;
 pub mod inputs;
 #[cfg(not(verus_keep_ghost))]
+pub mod project_views;
+#[cfg(not(verus_keep_ghost))]
 mod registrations;
 #[cfg(not(verus_keep_ghost))]
 pub mod route_views;
