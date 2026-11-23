@@ -2205,3 +2205,34 @@ fn capture_plan_binds_the_input_set_and_rejects_unregistered_units() {
         .remove(support::PROJECTS);
     assert!(query(&input).is_err());
 }
+
+#[test]
+fn offline_snapshot_inspection_separates_shape_and_environment_admission() {
+    let snapshot = serde_json::json!({"schema":"chrono-input-snapshot/v2", "commit":"a".repeat(40),
+        "config_path":"config.json", "config_digest":"b".repeat(64), "environment":{"MODE":"dev"},
+        "files":{"optional":{"absent":true}}});
+    let inspect = |snapshot: &serde_json::Value, config: serde_json::Value| {
+        let input =
+            serde_json::to_vec(&serde_json::json!({"snapshot":snapshot,"config":config})).unwrap();
+        chrono_judge_registration::snapshot_queries::inspect(input.as_slice())
+    };
+    let config = serde_json::json!({"environment":{"inherit":["MODE"],"values":{}}});
+    let expected =
+        serde_json::json!({"schema":"chrono-input-snapshot/v2","environment_error":null});
+    assert_eq!(
+        inspect(&snapshot, serde_json::Value::Null).unwrap(),
+        expected
+    );
+    assert_eq!(inspect(&snapshot, config).unwrap(), expected);
+    let undeclared = serde_json::json!({"environment":{"inherit":[],"values":{}}});
+    assert_eq!(
+        inspect(&snapshot, undeclared.clone()).unwrap()["environment_error"],
+        "unregistered retained environment variable MODE"
+    );
+    let mut invalid = snapshot;
+    invalid["files"]["optional"] = serde_json::json!({"absent":false});
+    assert_eq!(
+        inspect(&invalid, undeclared).unwrap_err(),
+        chrono_judge_registration::inputs::snapshot_shape(&invalid).unwrap_err()
+    );
+}

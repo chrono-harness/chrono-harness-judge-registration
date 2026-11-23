@@ -75,6 +75,7 @@ fn main() -> std::process::ExitCode {
                 "worktree-inputs-v1"
                     | "capture-plan-v1"
                     | "collection-inputs-v1"
+                    | "inspect-snapshot-v1"
                     | "impact-views-v1"
                     | "workflow-views-v1"
             )
@@ -90,6 +91,9 @@ fn main() -> std::process::ExitCode {
                         chrono_judge_registration::workflow_views::query(&root, input)
                     }),
                 Some("capture-plan-v1") => chrono_judge_registration::inputs::capture_plan(input),
+                Some("inspect-snapshot-v1") => {
+                    chrono_judge_registration::snapshot_queries::inspect(input)
+                }
                 Some("collection-inputs-v1") => {
                     chrono_judge_registration::snapshot_queries::composition(input)
                 }
