@@ -186,6 +186,20 @@ impl Registrations {
         bindings.retain(|test, bindings| nodes[test].definitions.len() == bindings.len());
         bindings
     }
+    pub(crate) fn test_operations(&self) -> BTreeMap<String, Vec<String>> {
+        self.test_bindings()
+            .into_iter()
+            .map(|(test, bindings)| {
+                (
+                    test,
+                    bindings
+                        .into_iter()
+                        .map(|binding| binding.operation)
+                        .collect(),
+                )
+            })
+            .collect()
+    }
     /// The authoritative node inventory. Every definition is retained, including alias collisions.
     /// Values borrow immutable validated data; only `NodeView::unique` resolves a single definition.
     pub fn node_data(&self) -> BTreeMap<String, NodeView<'_>> {

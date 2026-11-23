@@ -75,6 +75,8 @@ fn main() -> std::process::ExitCode {
                 "worktree-inputs-v1"
                     | "capture-plan-v1"
                     | "collection-inputs-v1"
+                    | "route-views-v1"
+                    | "route-inputs-v1"
                     | "execution-declarations-v1"
                     | "test-retirements-v1"
                     | "impact-views-v1"
@@ -83,6 +85,14 @@ fn main() -> std::process::ExitCode {
         ) {
             let input = std::io::stdin().lock();
             let result = match operation {
+                Some("route-views-v1") => std::env::current_dir()
+                    .map_err(|e| e.to_string())
+                    .and_then(|root| chrono_judge_registration::route_views::views(&root, input)),
+                Some("route-inputs-v1") => std::env::current_dir()
+                    .map_err(|e| e.to_string())
+                    .and_then(|root| {
+                        chrono_judge_registration::route_views::effective_inputs(&root, input)
+                    }),
                 Some("execution-declarations-v1") => {
                     chrono_judge_registration::execution::plan_declarations(input)
                 }

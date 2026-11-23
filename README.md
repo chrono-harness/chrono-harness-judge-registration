@@ -38,3 +38,7 @@
 `test-retirements-v1` 供 routes 核对本次涉及的退役测试。stdin 中的 `judge` 指定查询方，`retired_tests` 列出待核对的原测试 ID。`endpoints.mode` 为 `documents` 时传入 `config` 和按路径索引的 `base`、`candidate`。为 `collection` 时从候选检出执行，提供封存的 `request`，历史转换按需使用绑定原单元的 `migration`。stdout 的 `retirements` 按原测试 ID 返回替代测试、共同退役（`Ok: null`）或原始错误。`downstream` 指明是否有登记的后续判官，`request_id` 在收集时绑定请求，在文档模式为 null。端点或传输失败退出 2，错误写入 stderr。
 
 `execution-declarations-v1` 接受含 `filemap` 和 `projects` 的 JSON 对象。它验证完整的测试计划和各操作的限制，再输出 `plans` 映射及 `methods` 的判定。方法成功时 `Ok` 包含所有声明（含重名），失败时 `Err` 保留原始错误，供 routes 在执行单元归属检查后使用。计划不合法时退出 2 并把原因写入 stderr。
+
+普通 routes 判官在宿主当前检出向 `route-views-v1` 提交原封存请求。登记判官从固定提交读取两端登记，解释历史转换，返回请求 ID、提交对及原 Git 观察。成功的 `result.Ok` 包含两端配置、FILEMAP、项目文档、登记视图及候选的计划、方法、测试操作、调度和可复用工具。登记拒绝保留在 `result.Err`。
+
+routes 取得 FILEMAP 的退役测试后，可以用 `test-retirements-v1` 的 `view` 模式传入这个登记视图和配置路径。选定测试后向 `route-inputs-v1` 提供同一 `request`、`view` 和 `selected`，取得绑定请求 ID 的 `effective_inputs`。调用方负责原样传递已核验的视图。收集时按选中的执行单元核对保留输入，其他范围使用对应的原输入判法。请求、端点、登记摘要或上下文不符时拒绝。

@@ -102,15 +102,10 @@ pub(crate) fn project(
     view: Value,
 ) -> Value {
     let unit = matches!(req.scope, Some(chrono_harness::units::Scope::Unit { .. }));
-    let test_operations: BTreeMap<_, Vec<_>> = current
-        .test_bindings()
-        .into_iter()
-        .map(|(id, bindings)| (id, bindings.into_iter().map(|b| b.operation).collect()))
-        .collect();
     json!({
         "config":current.config(), "projects":current.projects(), "filemap":current.filemap(),
         "judges":current.judges(), "workflow":current.workflow(),
-        "methods":execution::methods(current.projects()),"test_operations":test_operations,
+        "methods":execution::methods(current.projects()),"test_operations":current.test_operations(),
         "effective_inputs":inputs::validate(req, old, current),
         "changes":if unit { Value::Null } else { tested_changes(old,current) },
         "conversion":view["conversion"]

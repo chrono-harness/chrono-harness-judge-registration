@@ -20,6 +20,10 @@ enum Endpoints {
         base: BTreeMap<String, Value>,
         candidate: BTreeMap<String, Value>,
     },
+    View {
+        config: String,
+        view: Value,
+    },
     Collection {
         request: Request,
         migration: Option<Migration>,
@@ -50,6 +54,10 @@ pub fn query(root: &Path, input: impl Read) -> Result<Value, String> {
             Registrations::load(&candidate, &config)?,
             None,
         ),
+        Endpoints::View { config, view } => {
+            let (old, current) = crate::transition::load_view(&view, &config)?;
+            (old, current, None)
+        }
         Endpoints::Collection { request, migration } => {
             if request.candidate.root != root
                 || !matches!(request.scope, Some(units::Scope::Collect { .. }))
