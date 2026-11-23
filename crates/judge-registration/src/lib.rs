@@ -97,29 +97,57 @@ pub fn validate_projects(projects: &Value) -> std::result::Result<(), String> {
 /// Unqualified legacy FILEMAP documents keep their existing interpretation.
 #[cfg(not(verus_keep_ghost))]
 pub fn select_filemap(filemap: &Value, config: Option<&str>) -> std::result::Result<Value, String> {
+    let extra = configuration_edges(filemap, config)?;
+    let mut selected = filemap.clone();
+    if let Some(fields) = selected.as_object_mut() {
+        fields.remove("configuration_edges");
+    }
+    if !extra.is_empty() {
+        selected["project_edges"]
+            .as_array_mut()
+            .unwrap()
+            .extend_from_slice(extra);
+    }
+    Ok(selected)
+}
+
+#[cfg(not(verus_keep_ghost))]
+fn configuration_edges<'a>(filemap: &'a Value, config: Option<&str>) -> Result<&'a [Value]> {
     let Some(table) = filemap.get("configuration_edges") else {
-        return Ok(filemap.clone());
+        return Ok(&[]);
     };
     schema::filemap(filemap)?;
     let config =
         config.ok_or("configuration edges require an effective registration configuration")?;
-    let mut selected = filemap.clone();
-    selected
-        .as_object_mut()
-        .unwrap()
-        .remove("configuration_edges");
-    let edges = selected["project_edges"].as_array_mut().unwrap();
+    let shared = filemap["project_edges"].as_array().unwrap();
     for row in table["configurations"].as_array().unwrap() {
         if row["config"] == config {
-            for edge in row["edges"].as_array().unwrap() {
-                if edges.contains(edge) {
+            let edges = row["edges"].as_array().unwrap();
+            for (index, edge) in edges.iter().enumerate() {
+                if shared.contains(edge) || edges[..index].contains(edge) {
                     return Err("duplicate active configuration edge".into());
                 }
-                edges.push(edge.clone());
             }
+            return Ok(edges);
         }
     }
-    Ok(selected)
+    Ok(&[])
+}
+
+#[cfg(not(verus_keep_ghost))]
+pub fn query_configuration_edges(input: impl std::io::Read) -> std::result::Result<Value, String> {
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Query {
+        #[serde(deserialize_with = "chrono_harness::strict_json_value")]
+        filemap: Value,
+        effective_config: Option<String>,
+    }
+    let query: Query = serde_json::from_reader(input).map_err(|error| error.to_string())?;
+    Ok(value!(configuration_edges(
+        &query.filemap,
+        query.effective_config.as_deref()
+    )?))
 }
 
 #[cfg(not(verus_keep_ghost))]
