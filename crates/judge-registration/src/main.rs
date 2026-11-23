@@ -69,10 +69,16 @@ fn main() -> std::process::ExitCode {
     let operation = args.next();
     if args.next().is_none() {
         let operation = operation.as_deref().and_then(std::ffi::OsStr::to_str);
-        if matches!(operation, Some("worktree-inputs-v1" | "capture-plan-v1")) {
+        if matches!(
+            operation,
+            Some("worktree-inputs-v1" | "capture-plan-v1" | "collection-inputs-v1")
+        ) {
             let input = std::io::stdin().lock();
             let result = match operation {
                 Some("capture-plan-v1") => chrono_judge_registration::inputs::capture_plan(input),
+                Some("collection-inputs-v1") => {
+                    chrono_judge_registration::snapshot_queries::composition(input)
+                }
                 _ => chrono_judge_registration::worktree::query(input),
             }
             .and_then(|reply| {
