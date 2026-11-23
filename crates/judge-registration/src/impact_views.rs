@@ -21,6 +21,12 @@ enum Operation {
         #[serde(default)]
         scheduling: bool,
     },
+    #[serde(skip)]
+    Workflow {
+        request: chrono_harness::wire::Request,
+        #[serde(default)]
+        replay: bool,
+    },
     Request {
         request: chrono_harness::wire::Request,
     },
@@ -121,10 +127,32 @@ struct MigrationInputs {
 }
 
 pub fn query(root: &Path, input: impl Read) -> Result<Value, String> {
+    let query = serde_json::from_reader(input).map_err(|error| error.to_string())?;
+    project(root, query)
+}
+
+pub(crate) fn workflow(
+    root: &Path,
+    request: chrono_harness::wire::Request,
+    replay: bool,
+    originals: [Documents; 2],
+) -> Result<Value, String> {
+    project(
+        root,
+        Query {
+            operation: Operation::Workflow { request, replay },
+            originals,
+        },
+    )
+}
+
+fn project(root: &Path, query: Query) -> Result<Value, String> {
     let Query {
         operation,
         originals: [before, after],
-    } = serde_json::from_reader(input).map_err(|error| error.to_string())?;
+    } = query;
+    let workflow = matches!(operation, Operation::Workflow { .. });
+    let replay = matches!(operation, Operation::Workflow { replay: true, .. });
     let (request, migration, collection) = match operation {
         Operation::Endpoints {
             config,
@@ -156,7 +184,9 @@ pub fn query(root: &Path, input: impl Read) -> Result<Value, String> {
             }
             return Ok(reply);
         }
-        Operation::Request { request } => (request, None, false),
+        Operation::Workflow { request, .. } | Operation::Request { request } => {
+            (request, None, false)
+        }
         Operation::Collection { request, migration } => (request, migration, true),
     };
     request.validate()?;
@@ -191,6 +221,13 @@ pub fn query(root: &Path, input: impl Read) -> Result<Value, String> {
             if collection { Some(&load) } else { None },
             get_reader,
         )?;
+        if workflow {
+            return Ok(if replay {
+                json!({"replayed":true})
+            } else {
+                crate::workflow_views::project(&request, &old, &current, view)
+            });
+        }
         let inputs = crate::inputs::validate(&request, &old, &current)?;
         let mut out = pair(&old, &current)?;
         match crate::inputs::effective_environments(&inputs, &old, &current) {

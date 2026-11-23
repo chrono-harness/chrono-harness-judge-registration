@@ -37,6 +37,8 @@ pub mod verified_readiness;
 #[cfg(not(verus_keep_ghost))]
 pub mod verified_scheduling;
 #[cfg(not(verus_keep_ghost))]
+pub mod workflow_views;
+#[cfg(not(verus_keep_ghost))]
 pub mod worktree;
 #[cfg(not(verus_keep_ghost))]
 pub use transition::{

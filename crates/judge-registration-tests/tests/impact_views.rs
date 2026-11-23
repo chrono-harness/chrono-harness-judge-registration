@@ -124,3 +124,73 @@ fn retained_environment_excludes_undeclared_entries_even_with_a_matching_digest(
             .contains("candidate: effective environment differs")
     );
 }
+
+#[test]
+fn workflow_views_bind_originals_and_preserve_retirement_failures_until_demanded() {
+    use chrono_harness::wire::{Request, Status};
+    use chrono_registration_fixture::{PROJECTS, WORKFLOW};
+    let base = values();
+    let mut current = base.clone();
+    current.get_mut(PROJECTS).unwrap()["projects"] = json!([]);
+    current.get_mut(WORKFLOW).unwrap()["retirements"] = json!([
+        {"kind":"test","id":"t","replacement":"missing","reason":"exercise an unresolved replacement"}
+    ]);
+    let base_id = "1".repeat(40);
+    let head_id = "2".repeat(40);
+    let context = "a".repeat(64);
+    let digest = chrono_harness::facts::registry_digest(&base, &current).unwrap();
+    let mut request: Request = serde_json::from_value(json!({
+        "protocol":"chrono-judge/v1","request_id":"","judge_id":"workflow","mode":"evaluate",
+        "base":{"commit":base_id,"tree":base_id,"root":"."},
+        "candidate":{"commit":head_id,"tree":head_id,"root":"."},
+        "delta":[],"registries":{"base":"before","candidate":"after","digest":digest},
+        "context":{"path":"context","sha256":context},"impact":{},"prior_results":[],
+        "config_path":CONFIG,"checkout":{"head":head_id,"tracked":[],"untracked":[],"index_flags":[]},
+        "runner":{"path":"runner","sha256":context,"version":"fixture"}
+    })).unwrap();
+    let mut previous = request.response(Status::Pass);
+    previous.judge_id = "registration".into();
+    previous.outputs.insert(
+        "registration_view".into(),
+        json!({
+            "binding":{"base":base_id,"candidate":head_id,"registry":digest,"context":context},
+            "base":base,"candidate":current,"historical":{}
+        }),
+    );
+    request.prior_results.push(previous);
+    request.seal().unwrap();
+    let run = |request: &Request, replay| {
+        let body = json!({"request":request,"replay":replay,
+            "originals":[originals(&base),originals(&current)]});
+        chrono_judge_registration::workflow_views::query(
+            Path::new("."),
+            body.to_string().as_bytes(),
+        )
+    };
+    let full = run(&request, false).unwrap();
+    assert_eq!(full["request_id"], request.request_id);
+    assert_eq!(full["commits"], json!([base_id, head_id]));
+    assert_eq!(full["changes"]["requests"]["Ok"]["test:t"], "test:missing");
+    assert!(
+        full["changes"]["removed_tests"]["test:t"]["Err"]
+            .as_str()
+            .unwrap()
+            .contains("replacement missing/ambiguous")
+    );
+    assert_eq!(full["changes"]["removed_owners"][0]["id"], "p");
+    assert!(
+        full["changes"]["removed_owners"][0]["replacement"]["Err"]
+            .as_str()
+            .unwrap()
+            .contains("missing/ambiguous project:p")
+    );
+    assert_eq!(full["effective_inputs"], json!({"Ok":null}));
+    assert_eq!(run(&request, true).unwrap()["replayed"], true);
+    request.scope = Some(chrono_harness::units::Scope::Unit {
+        unit: "example".into(),
+    });
+    request.seal().unwrap();
+    assert!(run(&request, false).unwrap()["changes"].is_null());
+    request.judge_id = "another".into();
+    assert!(run(&request, true).unwrap_err().contains("identity"));
+}

@@ -76,6 +76,7 @@ fn main() -> std::process::ExitCode {
                     | "capture-plan-v1"
                     | "collection-inputs-v1"
                     | "impact-views-v1"
+                    | "workflow-views-v1"
             )
         ) {
             let input = std::io::stdin().lock();
@@ -83,6 +84,11 @@ fn main() -> std::process::ExitCode {
                 Some("impact-views-v1") => std::env::current_dir()
                     .map_err(|error| error.to_string())
                     .and_then(|root| chrono_judge_registration::impact_views::query(&root, input)),
+                Some("workflow-views-v1") => std::env::current_dir()
+                    .map_err(|error| error.to_string())
+                    .and_then(|root| {
+                        chrono_judge_registration::workflow_views::query(&root, input)
+                    }),
                 Some("capture-plan-v1") => chrono_judge_registration::inputs::capture_plan(input),
                 Some("collection-inputs-v1") => {
                     chrono_judge_registration::snapshot_queries::composition(input)
