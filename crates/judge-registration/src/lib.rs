@@ -21,6 +21,8 @@ mod registrations;
 #[cfg(not(verus_keep_ghost))]
 pub mod snapshot_queries;
 #[cfg(not(verus_keep_ghost))]
+pub mod test_retirements;
+#[cfg(not(verus_keep_ghost))]
 mod transition;
 #[allow(unexpected_cfgs)]
 #[cfg(not(verus_keep_ghost))]
