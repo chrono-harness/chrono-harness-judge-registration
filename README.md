@@ -24,3 +24,5 @@
 `chrono-judge-registration classification-views-v1` 从 stdin 读取封存的 chrono-judge/v1 请求。它校验请求身份，按相同固定端点和历史转换规则解释登记，返回 request_id、base、candidate。每端的 endpoint 给出 workflow 路径、变更路径在 FILEMAP 的 surfaces 和 semantic_fields；documents 包含此次变更涉及的已解释登记文档，warning_code 取自本端工作流。mixed 可据此选择所需文档，外部文档仍从指定提交读取。登记拒绝返回原始 error，绑定 Git 的请求同时返回 git_facts。解码或传输失败退出 2。
 
 `chrono-judge-registration capture-plan-v1` 接受 config（配置入口路径）、documents（调用方从固定提交读取的登记文档）和可选 unit。它执行登记校验并返回 effective_config、selection、schema 及该次捕获所需的输入 ID 集合 required。成功退出 0，未知单元或无效登记退出 2 并写出原错误。实际环境、文件和输出快照由 inputs 负责。
+
+`collection-inputs-v1` 从标准输入读取 `config`、`base`、`candidate` 和 `selected`。两端的登记文档用路径到 JSON 对象的映射表示。命令按选中的测试返回两端收集所需的输入 ID，保留基线独有或候选新增执行单元的处理。成功写出 `base` 和 `candidate` 数组，错误写入 stderr 并退出 2。

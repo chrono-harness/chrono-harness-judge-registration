@@ -18,6 +18,8 @@ pub mod inputs;
 #[cfg(not(verus_keep_ghost))]
 mod registrations;
 #[cfg(not(verus_keep_ghost))]
+pub mod snapshot_queries;
+#[cfg(not(verus_keep_ghost))]
 mod transition;
 #[allow(unexpected_cfgs)]
 #[cfg(not(verus_keep_ghost))]
