@@ -282,13 +282,13 @@ impl Registrations {
         nodes
     }
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct NodeDefinition<'a> {
     /// Identity of the defining record, e.g. project:t or script:t for the alias test:t.
     pub identity: String,
     pub value: &'a Value,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct NodeView<'a> {
     pub kind: NodeKind,
     pub definitions: Vec<NodeDefinition<'a>>,

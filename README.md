@@ -26,3 +26,7 @@
 `chrono-judge-registration capture-plan-v1` 接受 config（配置入口路径）、documents（调用方从固定提交读取的登记文档）和可选 unit。它执行登记校验并返回 effective_config、selection、schema 及该次捕获所需的输入 ID 集合 required。成功退出 0，未知单元或无效登记退出 2 并写出原错误。实际环境、文件和输出快照由 inputs 负责。
 
 `collection-inputs-v1` 从标准输入读取 `config`、`base`、`candidate` 和 `selected`。两端的登记文档用路径到 JSON 对象的映射表示。命令按选中的测试返回两端收集所需的输入 ID，保留基线独有或候选新增执行单元的处理。成功写出 `base` 和 `candidate` 数组，错误写入 stderr 并退出 2。
+
+`impact-views-v1` 供 FILEMAP 解释两个固定端点的登记。stdin 中的 `originals` 按基线、候选顺序给出两个按仓内路径索引的 UTF-8 原文表，保留换行和空白。`operation.mode` 为 `endpoints` 时提供 `base`、`candidate`、`config` 和可选的 `scheduling`。为 `request` 或 `collection` 时提供已封存的 `request`，收集时还可提供按原单元绑定的 `migration` 原件。
+
+成功响应包含两个端点的配置、登记文档、原始 schema、节点定义、现役测试别名和调度冲突，以及已修复的基线歧义。执行请求还携带输入环境的判定和请求身份。FILEMAP 负责读取原文、计算 DELTA、图闭包及最终影响。登记工具仅在需要额外读取时返回自己的 Git 观察。注册拒绝通过请求响应的 `error` 或普通端点命令的 stderr 返回，解码与进程失败退出 2。

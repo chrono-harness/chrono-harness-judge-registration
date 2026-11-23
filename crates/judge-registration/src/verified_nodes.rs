@@ -7,7 +7,8 @@ use vstd::prelude::*;
 verus! {
 
 #[derive(Copy)]
-#[cfg_attr(not(verus_keep_ghost), derive(Debug))]
+#[cfg_attr(not(verus_keep_ghost), derive(Debug, serde::Serialize))]
+#[cfg_attr(not(verus_keep_ghost), serde(rename_all = "lowercase"))]
 pub enum NodeKind {
     File,
     Project,
