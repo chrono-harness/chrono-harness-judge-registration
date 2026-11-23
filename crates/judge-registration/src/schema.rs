@@ -475,6 +475,16 @@ fn validate_execution_units(v: &Value) -> Result {
 }
 #[cfg(not(verus_keep_ghost))]
 pub fn projects(v: &Value) -> Result {
+    project_bindings(v).map(|_| ())
+}
+
+#[cfg(not(verus_keep_ghost))]
+pub(crate) fn project_bindings(
+    v: &Value,
+) -> std::result::Result<
+    std::collections::BTreeMap<String, Vec<crate::execution::TestBinding>>,
+    String,
+> {
     common_versions(v, &["owners", "projects", "scripts"], &[1, 2])?;
     let languages = v["schema_version"] == 2;
     unique(&v["owners"], None)?;
@@ -544,8 +554,7 @@ pub fn projects(v: &Value) -> Result {
             }],
         )?;
     }
-    crate::execution::test_bindings(v)?;
-    Ok(())
+    crate::execution::test_bindings(v)
 }
 #[cfg(not(verus_keep_ghost))]
 pub fn filemap(v: &Value) -> Result {

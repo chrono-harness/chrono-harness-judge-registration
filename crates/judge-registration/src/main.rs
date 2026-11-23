@@ -130,6 +130,7 @@ fn main() -> std::process::ExitCode {
                 "execution-methods"
                     | "test-owners"
                     | "test-bindings-v1"
+                    | "scoped-test-bindings-v1"
                     | "filemap-views"
                     | "classification-views-v1"
             )
@@ -140,6 +141,9 @@ fn main() -> std::process::ExitCode {
                     Some("execution-methods") => ExecutionView::Methods.write(&bytes, &mut out)?,
                     Some("test-bindings-v1") => {
                         ExecutionView::TestBindings.write(&bytes, &mut out)?
+                    }
+                    Some("scoped-test-bindings-v1") => {
+                        ExecutionView::ScopedTestBindings.write(&bytes, &mut out)?
                     }
                     Some("test-owners") => ExecutionView::TestOwners.write(&bytes, &mut out)?,
                     _ => {
