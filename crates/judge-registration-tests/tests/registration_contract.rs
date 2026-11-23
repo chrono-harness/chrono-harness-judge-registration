@@ -1988,6 +1988,28 @@ fn configuration_edges_select_exact_policy_without_changing_shared_graph() {
     let mut scoped = base.clone();
     scoped["configuration_edges"] = json!({"schema":"chrono-filemap-configuration-edges/v1",
         "configurations":[{"config":".chrono-harness/a.json","edges":[private]}]});
+    let query = |doc: &Value, config: Option<&str>| {
+        let input = json!({"filemap": doc, "effective_config": config});
+        chrono_judge_registration::query_configuration_edges(
+            serde_json::to_vec(&input).unwrap().as_slice(),
+        )
+    };
+    assert_eq!(
+        query(&scoped, Some(".chrono-harness/a.json")).unwrap(),
+        json!([private])
+    );
+    assert_eq!(
+        query(&scoped, Some(".chrono-harness/b.json")).unwrap(),
+        json!([])
+    );
+    assert_eq!(query(&base, None).unwrap(), json!([]));
+    assert!(query(&scoped, None).is_err());
+    let mut repeated = scoped.clone();
+    repeated["configuration_edges"]["configurations"][0]["edges"] = json!([private, private]);
+    assert_eq!(
+        query(&repeated, Some(".chrono-harness/a.json")).unwrap_err(),
+        "duplicate active configuration edge"
+    );
     let source = scoped.clone();
     let selected = select_filemap(&scoped, Some(".chrono-harness/a.json")).unwrap();
     assert_eq!(selected["project_edges"], json!([shared, private]));

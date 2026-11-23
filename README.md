@@ -45,6 +45,8 @@
 
 routes 取得 FILEMAP 的退役测试后，可以用 `test-retirements-v1` 的 `view` 模式传入这个登记视图和配置路径。选定测试后向 `route-inputs-v1` 提供同一 `request`、`view` 和 `selected`，取得绑定请求 ID 的 `effective_inputs`。调用方负责原样传递已核验的视图。收集时按选中的执行单元核对保留输入，其他范围使用对应的原输入判法。请求、端点、登记摘要或上下文不符时拒绝。
 
+`configuration-edges-v1` 从标准输入读取固定端点的完整 `filemap` 和 `effective_config`。命令验证配置边登记，输出该配置需追加到 `project_edges` 的边数组。重复边或缺少必需的有效配置时退出 2。未登记配置边或选中其他配置时返回空数组。
+
 `scoped-execution-v1` 读取一个固定端点的 `filemap`、`projects` 和 `artifacts`。FILEMAP 可只提供 `schema_version`、`execution_plans`、`execution_scheduling` 和 `reference_syntax`。命令校验项目、计划限额、调度声明与引用语法，成功后输出与 `scoped-test-bindings-v1` 相同的绑定表。v1 使用宿主声明的计划。无效登记写入 stderr 并退出 2。
 
 `chrono-judge-registration classification-inputs-v1 SELECTOR` 从 stdin 接收封存的原生判官请求。它解释两个固定端点，将 DELTA、登记、前置 impact 和 costs 及其绑定传给调用者给出的绝对路径程序 `SELECTOR plan-classification-v1`。选择器返回两个端点所需的路径数组 `base`、`candidate` 和透传的 `context`。registration 只接受已声明且在对应 DELTA 端点存在的路径，优先使用解释后的登记文档，其余从对应提交读取。stdout 返回 runner judge-pipeline 的输入生产者响应，成功和业务失败均保留本次已执行的 Git 读取记录。

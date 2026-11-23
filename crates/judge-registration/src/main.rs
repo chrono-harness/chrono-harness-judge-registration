@@ -101,6 +101,7 @@ fn main() -> std::process::ExitCode {
                     | "route-views-v1"
                     | "route-inputs-v1"
                     | "execution-declarations-v1"
+                    | "configuration-edges-v1"
                     | "scoped-execution-v1"
                     | "test-retirements-v1"
                     | "impact-views-v1"
@@ -112,6 +113,9 @@ fn main() -> std::process::ExitCode {
                 Some("route-views-v1") => chrono_judge_registration::route_views::views(input),
                 Some("route-inputs-v1") => {
                     chrono_judge_registration::route_views::effective_inputs(input)
+                }
+                Some("configuration-edges-v1") => {
+                    chrono_judge_registration::query_configuration_edges(input)
                 }
                 Some("scoped-execution-v1") => {
                     chrono_judge_registration::execution::scoped_execution(input)
