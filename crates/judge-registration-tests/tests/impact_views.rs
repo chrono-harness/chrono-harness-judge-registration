@@ -254,3 +254,79 @@ fn route_inputs_replay_the_checked_view_at_the_sealed_endpoints() {
         "E_RETIREMENT: test is not a removed baseline identity: test:t"
     );
 }
+
+#[test]
+fn full_ci_schedule_retains_all_operations_for_a_colliding_test_id() {
+    let mut after = values();
+    let before = after.clone();
+    script_pair(&mut after, "t");
+    let input = json!({"base":"1".repeat(40),"candidate":"2".repeat(40),"config":CONFIG,
+        "mode":"full-schedule","retired":[],"documents":[before,after]});
+    let reply = chrono_judge_registration::ci_transition::query(
+        Path::new("."),
+        input.to_string().as_bytes(),
+    )
+    .unwrap();
+    assert_eq!(reply["git_facts"], Value::Null);
+    let plans = &reply["result"]["Ok"];
+    assert_eq!(plans["previous"]["filemap"], *load(&before).filemap());
+    assert_eq!(plans["candidate"]["projects"], *load(&after).projects());
+    assert_eq!(
+        plans["test_operations"]["test:t"],
+        json!(["execute.t", "script.st"])
+    );
+}
+
+#[test]
+fn scoped_scheduling_selects_both_ends_of_changed_claims_and_preserves_unrelated_tests() {
+    let old = json!({"scheduling":{"max_running":2,"resources":["lock"],"claims":{
+        "writer":{"resources":["lock"],"outputs":["out/left"]},
+        "reader":{"resources":["lock"],"outputs":[]},
+        "nested":{"resources":[],"outputs":["out/right/file"]},
+        "unrelated":{"resources":[],"outputs":[]}
+    }},"operations":{"test:writer":["writer"],"test:old-reader":["reader"],
+        "test:nested":["nested"],"test:unrelated":["unrelated"]}});
+    let mut new = old.clone();
+    new["scheduling"]["claims"]["writer"] = json!({"resources":[],"outputs":["out/right/"]});
+    new["operations"]
+        .as_object_mut()
+        .unwrap()
+        .remove("test:old-reader");
+    let selected = |a: &Value, b: &Value| {
+        chrono_judge_registration::execution::scheduling_tests(json!([a, b]).to_string().as_bytes())
+            .unwrap()
+    };
+    assert!(selected(&old, &old).is_empty());
+    assert_eq!(
+        selected(&old, &new),
+        ["test:nested", "test:old-reader", "test:writer"]
+            .map(String::from)
+            .into_iter()
+            .collect()
+    );
+    new["scheduling"]["max_running"] = json!(1);
+    assert!(selected(&old, &new).contains("test:unrelated"));
+}
+
+#[test]
+fn legacy_startup_defers_an_unused_plan_error_and_retains_method_and_binding_owners() {
+    let docs = values();
+    let projects = &docs[chrono_registration_fixture::PROJECTS];
+    let query = json!({"filemap":{"schema_version":1},"projects":projects,"artifacts":[]});
+    let reply =
+        chrono_judge_registration::execution::scoped_startup(query.to_string().as_bytes()).unwrap();
+    assert_eq!(
+        reply["startup"]["owners"]["Ok"]["test:t"],
+        json!(["project:t"])
+    );
+    assert_eq!(
+        reply["startup"]["methods"]["Ok"]["execute.t"][0]["owner"],
+        "project:t"
+    );
+    assert!(
+        reply["startup"]["plans"]["Err"]
+            .as_str()
+            .unwrap()
+            .contains("E_EXECUTION_PLAN")
+    );
+}

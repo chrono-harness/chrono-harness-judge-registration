@@ -24,6 +24,7 @@ struct Query {
 #[serde(rename_all = "kebab-case")]
 enum Mode {
     Schedule,
+    FullSchedule,
     Execute {
         environment: BTreeMap<String, String>,
     },
@@ -91,7 +92,7 @@ pub fn query(root: &Path, input: impl Read) -> Result<Value, String> {
                 root, &binding.config, &candidate,
                 &json!({"git_facts":binding.git_facts,"environment":binding.git_facts["environment"]}),
             ),
-            (None, Mode::Schedule) => Ok(facts::Reader::legacy()),
+            (None, Mode::Schedule | Mode::FullSchedule) => Ok(facts::Reader::legacy()),
             (None, Mode::Execute { .. }) => {
                 let reader = facts::Reader::for_config(root, &config)?;
                 reader.verify_config(root, &candidate)?;
@@ -101,7 +102,7 @@ pub fn query(root: &Path, input: impl Read) -> Result<Value, String> {
     };
     let result = (|| -> Result<Value, String> {
         let environment = match &mode {
-            Mode::Schedule => None,
+            Mode::Schedule | Mode::FullSchedule => None,
             Mode::Execute { environment } => Some(environment),
         };
         // A legacy execution has no caller-bound reader to check its configuration.
@@ -118,6 +119,12 @@ pub fn query(root: &Path, input: impl Read) -> Result<Value, String> {
             new,
             environment,
         )?;
+        if matches!(mode, Mode::FullSchedule) {
+            if !retired.is_empty() {
+                return Err("full scheduling determines retirements after registration".into());
+            }
+            return Ok(planning(&old, &new));
+        }
         Ok(
             json!({"tools":new.config()["tools"],"reused":transition::reused_tools(&view)?,
             "conversion":view["conversion"],"retirements":retirements(&old,&new,&retired)?}),
@@ -125,4 +132,9 @@ pub fn query(root: &Path, input: impl Read) -> Result<Value, String> {
     })();
     let observed = git.and_then(|_| reader.into_inner()?.ok().map(|reader| reader.observation()));
     Ok(json!({"previous":base,"candidate":candidate,"git_facts":observed,"result":result}))
+}
+
+pub(crate) fn planning(old: &Registrations, new: &Registrations) -> Value {
+    json!({"previous":crate::route_views::endpoint(old),
+        "candidate":crate::route_views::endpoint(new),"test_operations":new.test_operations()})
 }

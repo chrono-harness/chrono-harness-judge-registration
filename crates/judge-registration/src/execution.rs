@@ -315,6 +315,14 @@ fn scoped_bindings(projects: &Value) -> Result<BTreeMap<String, Vec<TestBinding>
 /// Check the execution declarations from one scoped endpoint before returning its bindings.
 /// The caller already owns the original plans, scheduling policy and reference declarations.
 pub fn scoped_execution(input: impl std::io::Read) -> Result<Value, String> {
+    scoped_endpoint(input, false)
+}
+
+pub fn scoped_startup(input: impl std::io::Read) -> Result<Value, String> {
+    scoped_endpoint(input, true)
+}
+
+fn scoped_endpoint(input: impl std::io::Read, startup: bool) -> Result<Value, String> {
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
     struct Endpoint {
@@ -350,7 +358,46 @@ pub fn scoped_execution(input: impl std::io::Read) -> Result<Value, String> {
             serde_json::from_value(declaration.clone()).map_err(|error| error.to_string())?;
         crate::validate_reference_syntax(&syntax)?;
     }
-    serde_json::to_value(bindings).map_err(|error| error.to_string())
+    if !startup {
+        return serde_json::to_value(bindings).map_err(|error| error.to_string());
+    }
+    // Consumption errors stay deferred until CI needs the corresponding declaration.
+    let methods = methods(&projects).map(|methods| {
+        methods
+            .into_iter()
+            .map(|(id, rows)| {
+                let entries: Vec<_> = rows
+                    .into_iter()
+                    .map(|method| {
+                        serde_json::json!({
+                            "owner":method.owner, "tool":method.tool, "argv":method.argv
+                        })
+                    })
+                    .collect();
+                (id, entries)
+            })
+            .collect::<BTreeMap<_, _>>()
+    });
+    let operations = plans(&filemap).map(|plans| {
+        plans
+            .into_iter()
+            .map(|(test, plan)| (test, plan.operations))
+            .collect::<BTreeMap<_, _>>()
+    });
+    let owners = test_bindings(&projects).map(|tests| {
+        tests
+            .into_iter()
+            .map(|(test, rows)| {
+                (
+                    test,
+                    rows.into_iter().map(|row| row.owner).collect::<Vec<_>>(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>()
+    });
+    Ok(
+        serde_json::json!({"bindings":bindings,"startup":{"methods":methods,"plans":operations,"owners":owners}}),
+    )
 }
 
 /// Read-only views of execution registrations consumed by release recipes and previews.
@@ -400,4 +447,56 @@ pub fn plan_declarations(input: impl std::io::Read) -> Result<Value, String> {
     let plans = plans(&query.filemap)?;
     // The caller must check unit ownership after decoding plans and before applying methods.
     Ok(serde_json::json!({"plans":plans, "methods":methods(&query.projects)}))
+}
+
+/// Select tests whose admitted scheduling declarations differ across fixed endpoints.
+pub fn scheduling_tests(input: impl std::io::Read) -> Result<BTreeSet<String>, String> {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Endpoint {
+        scheduling: Option<Scheduling>,
+        operations: BTreeMap<String, Vec<String>>,
+    }
+    let [old, new]: [Endpoint; 2] = serde_json::from_reader(input).map_err(|e| e.to_string())?;
+    let endpoints = [&old, &new];
+    let global = |policy: &Scheduling| {
+        (
+            policy.max_running,
+            policy.resources.clone(),
+            policy.priority.clone(),
+        )
+    };
+    let all = old.scheduling.as_ref().map(global) != new.scheduling.as_ref().map(global);
+    let policies: Vec<_> = endpoints
+        .iter()
+        .filter_map(|s| s.scheduling.as_ref())
+        .collect();
+    let empty = BTreeMap::new();
+    let before = old.scheduling.as_ref().map(|p| &p.claims).unwrap_or(&empty);
+    let after = new.scheduling.as_ref().map(|p| &p.claims).unwrap_or(&empty);
+    let changed: BTreeSet<_> = before
+        .keys()
+        .chain(after.keys())
+        .filter(|op| before.get(*op) != after.get(*op))
+        .collect();
+    let mut selected = BTreeSet::new();
+    for endpoint in endpoints {
+        for (test, operations) in &endpoint.operations {
+            if all
+                || operations.iter().any(|op| {
+                    changed.contains(op)
+                        || policies.iter().any(|policy| {
+                            policy.claims.contains_key(op)
+                                && changed.iter().any(|other| {
+                                    policy.claims.contains_key(*other)
+                                        && policy.conflicts(op, other)
+                                })
+                        })
+                })
+            {
+                selected.insert(test.clone());
+            }
+        }
+    }
+    Ok(selected)
 }

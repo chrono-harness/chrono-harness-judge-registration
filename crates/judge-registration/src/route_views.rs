@@ -5,15 +5,16 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{collections::BTreeSet, io::Read};
 
+pub(crate) fn endpoint(r: &Registrations) -> Value {
+    json!({"config":r.config(), "filemap":r.filemap(), "projects":r.projects()})
+}
+
 /// Interpret the actual fixed commits once, retaining the producing Git reader on errors too.
 pub fn views(input: impl Read) -> Result<Value, String> {
     let request: Request = serde_json::from_reader(input).map_err(|e| e.to_string())?;
     let reader = facts::Reader::for_request(&request);
     let result = reader.as_ref().map_err(Clone::clone).and_then(|reader| {
         let (old, current, view) = transition::views_with_reader(&request, reader)?;
-        let endpoint = |r: &Registrations| {
-            json!({"config":r.config(), "filemap":r.filemap(), "projects":r.projects()})
-        };
         Ok(json!({"base":endpoint(&old),"candidate":endpoint(&current),
             "methods":execution::methods(current.projects()),"plans":execution::plans(current.filemap()),
             "scheduling":execution::scheduling(current.filemap(),current.projects(),&current.config()["artifacts"]),

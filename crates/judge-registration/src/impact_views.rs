@@ -35,6 +35,10 @@ enum Operation {
     Request {
         request: chrono_harness::wire::Request,
     },
+    CiCollection {
+        request: chrono_harness::wire::Request,
+        migration: Option<MigrationInputs>,
+    },
     Collection {
         request: chrono_harness::wire::Request,
         migration: Option<MigrationInputs>,
@@ -180,6 +184,7 @@ fn project(root: &Path, query: Query) -> Result<Value, String> {
         } => Some(*validate_inputs),
         _ => None,
     };
+    let ci_collection = matches!(operation, Operation::CiCollection { .. });
     let workflow = matches!(operation, Operation::Workflow { .. });
     let replay = matches!(operation, Operation::Workflow { replay: true, .. });
     let (request, migration, collection) = match operation {
@@ -216,7 +221,8 @@ fn project(root: &Path, query: Query) -> Result<Value, String> {
         Operation::Projects { request, .. }
         | Operation::Workflow { request, .. }
         | Operation::Request { request } => (request, None, false),
-        Operation::Collection { request, migration } => (request, migration, true),
+        Operation::CiCollection { request, migration }
+        | Operation::Collection { request, migration } => (request, migration, true),
     };
     request.validate()?;
     if root != request.candidate.root
@@ -235,7 +241,11 @@ fn project(root: &Path, query: Query) -> Result<Value, String> {
             .as_ref()
             .map_err(Clone::clone)
     };
+    let needed = std::cell::RefCell::new(None);
     let load = |units: &[String]| {
+        if ci_collection && migration.is_none() {
+            needed.replace(Some(units.to_vec()));
+        }
         migration
             .as_ref()
             .filter(|original| original.units == units)
@@ -249,7 +259,11 @@ fn project(root: &Path, query: Query) -> Result<Value, String> {
             snapshot(&request.config_path, after)?,
             if collection { Some(&load) } else { None },
             get_reader,
+            !ci_collection,
         )?;
+        if ci_collection {
+            return Ok(crate::ci_transition::planning(&old, &current));
+        }
         if let Some(validate_inputs) = project_inputs {
             return Ok(crate::project_views::project(
                 &request,
@@ -277,9 +291,18 @@ fn project(root: &Path, query: Query) -> Result<Value, String> {
         }
         Ok::<_, String>(out)
     };
-    let mut reply = match project() {
-        Ok(value) => value,
-        Err(error) => json!({"error":error}),
+    let projected = project();
+    let mut reply = if ci_collection {
+        match (needed.into_inner(), projected) {
+            (Some(units), Err(_)) => json!({"outcome":{"needed":units}}),
+            (_, Ok(planning)) => json!({"outcome":{"ready":planning}}),
+            (_, Err(error)) => json!({"outcome":{"error":error}}),
+        }
+    } else {
+        match projected {
+            Ok(value) => value,
+            Err(error) => json!({"error":error}),
+        }
     };
     reply["request_id"] = json!(request.request_id);
     reply["commits"] = json!([request.base.commit, request.candidate.commit]);
