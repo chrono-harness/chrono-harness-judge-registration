@@ -28,15 +28,6 @@ impl Bounds {
     }
 }
 impl Plan {
-    pub fn bounds(&self, operation: &str) -> Bounds {
-        self.operation_bounds
-            .get(operation)
-            .copied()
-            .unwrap_or(Bounds {
-                timeout_seconds: self.timeout_seconds,
-                output_limit_bytes: self.output_limit_bytes,
-            })
-    }
     pub fn validate(&self) -> Result<(), String> {
         if self.operations.is_empty()
             || self.operations.iter().any(|s| s.is_empty())
