@@ -38,3 +38,4 @@ prove verify.registration-nodes-tests crates/judge-registration-tests/tests/veri
 prove verify.registration-readiness-tests crates/judge-registration-tests/tests/verified_readiness.rs
 prove verify.registration-input-coverage-tests crates/judge-registration-tests/tests/verified_input_coverage.rs
 prove verify.registration-scheduling-tests crates/judge-registration-tests/tests/verified_scheduling.rs
+prove verify.registration-snapshot-header-tests crates/judge-registration-tests/tests/verified_snapshot_header.rs
