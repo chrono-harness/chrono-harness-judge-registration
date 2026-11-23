@@ -205,3 +205,55 @@ fn retirement_query_binds_each_requested_test_to_its_original_decision() {
         "E_RETIREMENT: test is not a removed baseline identity: test:t"
     );
 }
+
+#[test]
+fn scoped_ci_receives_only_requested_retirements_with_the_old_cost_and_definitions() {
+    let old = support::values();
+    let mut candidate = old.clone();
+    candidate.get_mut(support::PROJECTS).unwrap()["projects"] = json!([]);
+    candidate.get_mut(support::WORKFLOW).unwrap()["retirements"] = json!([
+        {"kind":"test","id":"t","replacement":null,"reason":"pair retired"},
+        {"kind":"project","id":"p","replacement":null,"reason":"product retired"}
+    ]);
+    let base = "a".repeat(40);
+    let head = "b".repeat(40);
+    let run = |retired: &[&str]| {
+        let input = json!({"config":support::CONFIG,"base":base,"candidate":head,"git":null,
+            "mode":"schedule","documents":[old,candidate],"retired":retired});
+        chrono_judge_registration::ci_transition::query(
+            std::path::Path::new("."),
+            input.to_string().as_bytes(),
+        )
+        .unwrap()
+    };
+    let none = run(&[]);
+    assert_eq!(
+        none["result"]["Ok"]["tools"],
+        candidate[support::CONFIG]["tools"]
+    );
+    assert_eq!(none["result"]["Ok"]["retirements"], json!({}));
+    let reply = run(&["test:t"]);
+    assert_eq!(reply["previous"], base);
+    assert_eq!(reply["candidate"], head);
+    assert_eq!(reply["git_facts"], Value::Null);
+    let row = &reply["result"]["Ok"]["retirements"]["test:t"];
+    assert_eq!(row["replacement"], Value::Null, "{reply}");
+    let cost = old[support::FM]["test_costs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["test"] == "t")
+        .unwrap();
+    assert_eq!(row["context"]["cost"]["reference"], cost["cost"]);
+    assert_eq!(
+        row["context"]["cost"]["value"],
+        old[support::FM]["cost_models"][cost["cost"].as_str().unwrap()]
+    );
+    assert!(!row["context"]["definitions"].as_array().unwrap().is_empty());
+    assert!(
+        run(&["test:unknown"])["result"]["Err"]
+            .as_str()
+            .unwrap()
+            .contains("E_RETIREMENT")
+    );
+}

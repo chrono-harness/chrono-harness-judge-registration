@@ -103,6 +103,7 @@ fn main() -> std::process::ExitCode {
                     | "project-evidence-v1"
                     | "check-project-registry-v1"
                     | "check-documents-v1"
+                    | "ci-transition-v1"
                     | "route-views-v1"
                     | "route-inputs-v1"
                     | "execution-declarations-v1"
@@ -127,6 +128,9 @@ fn main() -> std::process::ExitCode {
                     .and_then(|root| {
                         chrono_judge_registration::project_views::evidence(&root, input)
                     }),
+                Some("ci-transition-v1") => std::env::current_dir()
+                    .map_err(|e| e.to_string())
+                    .and_then(|root| chrono_judge_registration::ci_transition::query(&root, input)),
                 Some("route-views-v1") => chrono_judge_registration::route_views::views(input),
                 Some("route-inputs-v1") => {
                     chrono_judge_registration::route_views::effective_inputs(input)
