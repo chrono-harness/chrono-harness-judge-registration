@@ -1,5 +1,7 @@
 # chrono-harness-judge-registration
 
+`chrono-judge-registration input-profile-v1` 接收含 `config` 与 `inspect_execution_units` 的 JSON。返回 `credential_environment` 名称，以及需要检查时经核对的 `has_execution_units`。inputs 以此决定采集时省去哪些环境变量，以及组合快照是否需要按单元计算输入。
+
 验证项目登记、执行方法与消费合同。
 
 使用 `cargo build --locked --manifest-path crates/judge-registration/Cargo.toml` 构建。安装 Verus 0.2026.04.24.f8e1704，运行 `VERUS=/path/to/verus ./check.sh` 检查格式、构建、测试及证明。
