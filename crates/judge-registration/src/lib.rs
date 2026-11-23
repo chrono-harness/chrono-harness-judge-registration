@@ -1,7 +1,5 @@
 #![allow(unexpected_cfgs)]
 #[cfg(verus_keep_ghost)]
-use super::result_types::paths as retained_paths;
-#[cfg(verus_keep_ghost)]
 use super::source_verifier;
 pub use inputs::{Retained, RetainedError, RetainedObservation, parse_retained, select_retained};
 pub use schema::{

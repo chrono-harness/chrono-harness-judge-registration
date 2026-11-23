@@ -68,3 +68,7 @@ bench = false
 [[test]]
 name = "verified_snapshot_header"
 path = "tests/verified_snapshot_header.rs"
+
+[[test]]
+name = "verified_snapshot_records"
+path = "tests/verified_snapshot_records.rs"
