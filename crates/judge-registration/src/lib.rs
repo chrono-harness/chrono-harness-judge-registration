@@ -85,6 +85,9 @@ pub fn read_custody_inputs(
     Ok((config, filemap))
 }
 
+/// Maximum input bytes for the bounded protocol and project binding queries.
+pub const PROJECTS_INPUT_LIMIT: usize = 64 * 1024 * 1024;
+
 /// Validate the explicit projects document without requiring a full-governance host.
 #[cfg(not(verus_keep_ghost))]
 pub fn validate_projects(projects: &Value) -> std::result::Result<(), String> {

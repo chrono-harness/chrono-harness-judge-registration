@@ -2149,6 +2149,60 @@ fn scoped_test_bindings_validate_v2_before_returning_the_map() {
 }
 
 #[test]
+fn scoped_execution_checks_the_declarations_behind_the_returned_bindings() {
+    use chrono_judge_registration::execution::scoped_execution;
+    let mut input = json!({
+        "projects":{"schema_version":1,"projects":[],"scripts":[{"id":"suite","actions":{
+            "execute":{"operation":"verify","tool":"test","argv":[]}}}]},
+        "filemap":{"schema_version":2,"execution_plans":{"test:suite":{
+            "operations":["verify"],"timeout_seconds":1,"output_limit_bytes":20}},
+            "execution_scheduling":{"max_running":1,"resources":[],"claims":{
+                "verify":{"resources":[],"outputs":["reports/"]}}},"reference_syntax":[]},
+        "artifacts":[{"path":"reports/"}]
+    });
+    let check = |doc: &Value| scoped_execution(serde_json::to_vec(doc).unwrap().as_slice());
+    assert_eq!(
+        check(&input).unwrap()["test:suite"][0]["operation"],
+        "verify"
+    );
+    for (pointer, value, reason) in [
+        (
+            "/filemap/execution_plans/test:suite/timeout_seconds",
+            json!(0),
+            "E_EXECUTION_PLAN",
+        ),
+        (
+            "/filemap/execution_scheduling/claims",
+            json!({}),
+            "E_SCHEDULING",
+        ),
+        ("/artifacts", json!([]), "E_SCHEDULING"),
+        ("/filemap/reference_syntax", json!({}), "invalid type"),
+        (
+            "/projects/schema_version",
+            json!(7),
+            "unsupported registry version",
+        ),
+    ] {
+        let mut invalid = input.clone();
+        *invalid.pointer_mut(pointer).unwrap() = value;
+        let error = check(&invalid).unwrap_err();
+        assert!(error.contains(reason), "{pointer}: {error}");
+    }
+    input["filemap"]
+        .as_object_mut()
+        .unwrap()
+        .remove("execution_scheduling");
+    input["filemap"]["execution_plans"]["test:suite"]["operations"] = json!([]);
+    assert!(check(&input).unwrap_err().contains("E_EXECUTION_PLAN"));
+    input["filemap"] = json!({"schema_version":1});
+    assert_eq!(
+        check(&input).unwrap()["test:suite"][0]["owner"],
+        "script:suite"
+    );
+}
+
+#[test]
 fn filemap_projection_preserves_declared_cost_data_and_test_group_identities() {
     let mut values = support::values();
     let project = &mut values.get_mut(support::PROJECTS).unwrap()["projects"][1];

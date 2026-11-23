@@ -44,3 +44,5 @@
 普通 routes 判官从原启动目录向 `route-views-v1` 提交原封存请求。登记判官按请求中的候选检出路径读取两个固定提交，解释历史转换，返回请求 ID、提交对及原 Git 观察。成功的 `result.Ok` 包含两端配置、FILEMAP、项目文档、登记视图及候选的计划、方法、测试操作、调度和可复用工具。登记拒绝保留在 `result.Err`。
 
 routes 取得 FILEMAP 的退役测试后，可以用 `test-retirements-v1` 的 `view` 模式传入这个登记视图和配置路径。选定测试后向 `route-inputs-v1` 提供同一 `request`、`view` 和 `selected`，取得绑定请求 ID 的 `effective_inputs`。调用方负责原样传递已核验的视图。收集时按选中的执行单元核对保留输入，其他范围使用对应的原输入判法。请求、端点、登记摘要或上下文不符时拒绝。
+
+`scoped-execution-v1` 读取一个固定端点的 `filemap`、`projects` 和 `artifacts`。FILEMAP 可只提供 `schema_version`、`execution_plans`、`execution_scheduling` 和 `reference_syntax`。命令校验项目、计划限额、调度声明与引用语法，成功后输出与 `scoped-test-bindings-v1` 相同的绑定表。v1 使用宿主声明的计划。无效登记写入 stderr 并退出 2。

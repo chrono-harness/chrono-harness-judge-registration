@@ -2,10 +2,10 @@ use std::io::{Read, Write};
 fn read_request() -> Result<Vec<u8>, String> {
     let mut bytes = Vec::new();
     if std::io::stdin()
-        .take(64 * 1024 * 1024 + 1)
+        .take(chrono_judge_registration::PROJECTS_INPUT_LIMIT as u64 + 1)
         .read_to_end(&mut bytes)
         .is_err()
-        || bytes.len() > 64 * 1024 * 1024
+        || bytes.len() > chrono_judge_registration::PROJECTS_INPUT_LIMIT
     {
         return Err("E_PROTOCOL: request read/bound".into());
     }
@@ -78,6 +78,7 @@ fn main() -> std::process::ExitCode {
                     | "route-views-v1"
                     | "route-inputs-v1"
                     | "execution-declarations-v1"
+                    | "scoped-execution-v1"
                     | "test-retirements-v1"
                     | "impact-views-v1"
                     | "workflow-views-v1"
@@ -88,6 +89,9 @@ fn main() -> std::process::ExitCode {
                 Some("route-views-v1") => chrono_judge_registration::route_views::views(input),
                 Some("route-inputs-v1") => {
                     chrono_judge_registration::route_views::effective_inputs(input)
+                }
+                Some("scoped-execution-v1") => {
+                    chrono_judge_registration::execution::scoped_execution(input)
                 }
                 Some("execution-declarations-v1") => {
                     chrono_judge_registration::execution::plan_declarations(input)
