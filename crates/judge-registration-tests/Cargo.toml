@@ -75,3 +75,7 @@ path = "tests/verified_snapshot_records.rs"
 [[test]]
 name = "impact_views"
 path = "tests/impact_views.rs"
+
+[[test]]
+name = "reference_syntax"
+path = "tests/reference_syntax.rs"
