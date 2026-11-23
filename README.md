@@ -58,3 +58,7 @@ projects 使用 `project-views-v1` 解释固定端点。标准输入提供封存
 `project-evidence-v1` 接收原 `request`、已解释的 `view` 和 `evidence`。`live` 模式在执行后复核现场输入，`retained` 从调用方提供的产物映射和可选运输位置读取原件，`unit` 核对原登记视图后将有效输入投影到单元。成功返回请求 ID 和有效输入，失败写入标准错误并退出 2。`check-project-registry-v1` 接收独立的项目登记文档，调用相同的结构校验，成功返回 JSON null。
 
 CI 向 `check-documents-v1` 的 stdin 提交 JSON，`entry` 为登记入口，`documents` 按路径提供该 Git 端点的文档。程序核验所有登记后向 stdout 写入选中的有效配置路径（JSON 字符串），退出 0。输入或登记有误时向 stderr 写入原因并退出 2。
+
+scoped CI 使用 `ci-transition-v1` 处理两个固定提交之间的登记变更。stdin 的 `config` 是登记入口，`base` 与 `candidate` 为完整提交 ID，`documents` 按基线、候选顺序提供以路径为键的登记文档，`retired` 仅列出本次选中的已移除测试。声明调度传入 `"mode":"schedule"`，现场执行传入 `"mode":{"execute":{"environment":{...}}}`。绑定 Git 的调用方先校验固定候选配置，再用 `git.config` 和不含进程列表的 `git.git_facts` 声明读取条件。历史文件按需读取，调度遇到必须执行的历史转换时拒绝。
+
+stdout 返回 `previous`、`candidate`、本次额外产生的 `git_facts` 和 `result`。成功的 `Ok` 提供候选工具声明、转换及可复用工具，并逐项给出所选退役测试的替代关系、原定义及原成本。登记拒绝保留在 `Err`。两种业务结果都退出 0，输入解码或传输失败退出 2。

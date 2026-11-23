@@ -104,7 +104,7 @@ pub fn validate_retained_view(
     let env = serde_json::from_value(req.observations["environment"]["effective"].clone())
         .map_err(|e| e.to_string())?;
     let (_, _, mut expected) = interpret_mode(
-        reader,
+        || Ok(reader),
         declaration_root,
         &req.base.commit,
         &req.candidate.commit,
@@ -265,8 +265,9 @@ pub(crate) fn views_from_snapshots<'a>(
             .transpose()?;
         retained_conversion(req, r, originals.as_ref())
     };
+    let reader = reader()?;
     let (a, b, mut view) = interpret_mode(
-        reader()?,
+        || Ok(reader),
         &req.candidate.root,
         &req.base.commit,
         &req.candidate.commit,
@@ -315,7 +316,7 @@ pub fn interpret_with_reader(
 ) -> Result<(Registrations, Registrations, Value), String> {
     reader.verify_config(root, candidate_oid)?;
     interpret_mode(
-        reader,
+        || Ok(reader),
         root,
         base,
         candidate_oid,
@@ -341,7 +342,7 @@ pub fn interpret_scheduling_with_reader(
 ) -> Result<(Registrations, Registrations, Value), String> {
     reader.verify_config(root, candidate_oid)?;
     interpret_mode(
-        reader,
+        || Ok(reader),
         root,
         base,
         candidate_oid,
@@ -465,8 +466,33 @@ fn retained_conversion(
     }
     Ok(Some(retained.unwrap_or(Value::Null)))
 }
-fn interpret_mode(
-    reader: &facts::Reader,
+pub(crate) fn interpret_ci_documents<'a>(
+    reader: impl Fn() -> Result<&'a facts::Reader, String>,
+    root: &Path,
+    base: &str,
+    candidate_oid: &str,
+    config: &str,
+    raw: Values,
+    candidate: Values,
+    environment: Option<&BTreeMap<String, String>>,
+) -> Result<(Registrations, Registrations, Value), String> {
+    interpret_mode(
+        reader,
+        root,
+        base,
+        candidate_oid,
+        config,
+        raw,
+        candidate,
+        environment.unwrap_or(&BTreeMap::new()),
+        None,
+        None,
+        environment.is_some(),
+    )
+}
+
+fn interpret_mode<'a>(
+    get_reader: impl Fn() -> Result<&'a facts::Reader, String>,
     root: &Path,
     base: &str,
     candidate_oid: &str,
@@ -516,7 +542,7 @@ fn interpret_mode(
         } else if profile["filemap_version"] == raw[filemap]["schema_version"] {
             legacy_required = true;
             let path = profile["profile_path"].as_str().unwrap();
-            let original = reader.blob(root, base, path);
+            let original = get_reader()?.blob(root, base, path);
             if let Err(e) = &original {
                 if e.starts_with("E_GIT_FACTS:") {
                     return Err(e.clone());
@@ -582,6 +608,7 @@ fn interpret_mode(
         .ok_or("migration tool missing")?;
     let argv: Vec<String> =
         serde_json::from_value(t["version_argv"].clone()).map_err(|e| e.to_string())?;
+    let reader = get_reader()?;
     let raw_bytes: BTreeMap<_, _> = raw
         .keys()
         .map(|p| Ok((p.clone(), reader.blob(root, base, p)?)))
