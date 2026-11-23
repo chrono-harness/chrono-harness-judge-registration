@@ -103,7 +103,6 @@ dependencies = [
  "chrono-harness",
  "chrono-judge-registration",
  "chrono-registration-fixture",
- "chrono-test-process",
  "serde",
  "serde_json",
  "sha1",
@@ -119,15 +118,6 @@ version = "0.1.0"
 dependencies = [
  "chrono-judge-registration",
  "serde_json",
-]
-
-[[package]]
-name = "chrono-test-process"
-version = "0.1.0"
-source = "git+https://github.com/chrono-harness/chrono-harness-runner.git?rev=a1cff08f74d996d618372f20adc203d1b5904d50#a1cff08f74d996d618372f20adc203d1b5904d50"
-dependencies = [
- "chrono-harness",
- "tempfile",
 ]
 
 [[package]]

@@ -11,7 +11,12 @@ cargo build --locked --manifest-path crates/judge-registration/Cargo.toml
 CHRONO_TEST_GIT=$(command -v chrono-test-git) || { echo "chrono-test-git is required by registration tests" >&2; exit 1; }
 CHRONO_TEST_GIT_PROFILE_BIN=$(command -v chrono-test-git-profile) || { echo "chrono-test-git-profile is required by registration tests" >&2; exit 1; }
 export CHRONO_TEST_GIT CHRONO_TEST_GIT_PROFILE_BIN
-cargo test --locked --manifest-path crates/judge-registration-tests/Cargo.toml
+# Cargo invokes the test executables with the fixture first on PATH.
+# Build scripts and the compiler keep their normal environment.
+mkdir "$scratch/test-bin"
+ln -s "$CHRONO_TEST_GIT" "$scratch/test-bin/git"
+test_runner=$(jq -cn --arg path "PATH=$scratch/test-bin:$PATH" '["/usr/bin/env", $path]')
+cargo test --locked --manifest-path crates/judge-registration-tests/Cargo.toml --config "target.'cfg(all())'.runner=$test_runner"
 
 prove() {
   local label=$1 root=$2
