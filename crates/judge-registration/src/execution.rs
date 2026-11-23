@@ -304,6 +304,55 @@ pub fn methods(projects: &Value) -> Result<BTreeMap<String, Vec<Method>>, String
     Ok(out)
 }
 
+fn scoped_bindings(projects: &Value) -> Result<BTreeMap<String, Vec<TestBinding>>, String> {
+    if projects["schema_version"] == 2 {
+        crate::schema::project_bindings(projects)
+    } else {
+        test_bindings(projects)
+    }
+}
+
+/// Check the execution declarations from one scoped endpoint before returning its bindings.
+/// The caller already owns the original plans, scheduling policy and reference declarations.
+pub fn scoped_execution(input: impl std::io::Read) -> Result<Value, String> {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Endpoint {
+        #[serde(deserialize_with = "chrono_harness::strict_json_value")]
+        filemap: Value,
+        projects: Box<serde_json::value::RawValue>,
+        #[serde(deserialize_with = "chrono_harness::strict_json_value")]
+        artifacts: Value,
+    }
+    let Endpoint {
+        filemap,
+        projects,
+        artifacts,
+    } = serde_json::from_reader(input).map_err(|error| error.to_string())?;
+    // The existing bindings interface limits the project document alone.
+    if projects.get().len() > crate::PROJECTS_INPUT_LIMIT {
+        return Err("E_PROTOCOL: request read/bound".into());
+    }
+    let projects = chrono_harness::json(projects.get().as_bytes())?;
+    if [&filemap, &projects]
+        .iter()
+        .any(|doc| !matches!(doc["schema_version"].as_u64(), Some(1 | 2)))
+    {
+        return Err("unsupported registry version".into());
+    }
+    let bindings = scoped_bindings(&projects)?;
+    // Scheduling validates its participating plans against the operation and artifact registrations.
+    if scheduling(&filemap, &projects, &artifacts)?.is_none() && filemap["schema_version"] == 2 {
+        plans(&filemap)?;
+    }
+    if let Some(declaration) = filemap.get("reference_syntax") {
+        let syntax =
+            serde_json::from_value(declaration.clone()).map_err(|error| error.to_string())?;
+        crate::validate_reference_syntax(&syntax)?;
+    }
+    serde_json::to_value(bindings).map_err(|error| error.to_string())
+}
+
 /// Read-only views of execution registrations consumed by release recipes and previews.
 pub enum ExecutionView {
     Methods,
@@ -319,12 +368,7 @@ impl ExecutionView {
             Self::Methods => serde_json::to_writer(&mut output, &methods(&projects)?),
             Self::TestBindings => serde_json::to_writer(&mut output, &test_bindings(&projects)?),
             Self::ScopedTestBindings => {
-                let bindings = if projects["schema_version"] == 2 {
-                    crate::schema::project_bindings(&projects)?
-                } else {
-                    test_bindings(&projects)?
-                };
-                serde_json::to_writer(&mut output, &bindings)
+                serde_json::to_writer(&mut output, &scoped_bindings(&projects)?)
             }
             Self::TestOwners => {
                 let mut tests_by_owner: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
