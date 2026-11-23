@@ -22,6 +22,11 @@ enum Operation {
         scheduling: bool,
     },
     #[serde(skip)]
+    Projects {
+        request: chrono_harness::wire::Request,
+        validate_inputs: bool,
+    },
+    #[serde(skip)]
     Workflow {
         request: chrono_harness::wire::Request,
         #[serde(default)]
@@ -146,11 +151,35 @@ pub(crate) fn workflow(
     )
 }
 
+pub(crate) fn projects(
+    root: &Path,
+    request: chrono_harness::wire::Request,
+    originals: [Documents; 2],
+    validate_inputs: bool,
+) -> Result<Value, String> {
+    project(
+        root,
+        Query {
+            operation: Operation::Projects {
+                request,
+                validate_inputs,
+            },
+            originals,
+        },
+    )
+}
+
 fn project(root: &Path, query: Query) -> Result<Value, String> {
     let Query {
         operation,
         originals: [before, after],
     } = query;
+    let project_inputs = match &operation {
+        Operation::Projects {
+            validate_inputs, ..
+        } => Some(*validate_inputs),
+        _ => None,
+    };
     let workflow = matches!(operation, Operation::Workflow { .. });
     let replay = matches!(operation, Operation::Workflow { replay: true, .. });
     let (request, migration, collection) = match operation {
@@ -184,9 +213,9 @@ fn project(root: &Path, query: Query) -> Result<Value, String> {
             }
             return Ok(reply);
         }
-        Operation::Workflow { request, .. } | Operation::Request { request } => {
-            (request, None, false)
-        }
+        Operation::Projects { request, .. }
+        | Operation::Workflow { request, .. }
+        | Operation::Request { request } => (request, None, false),
         Operation::Collection { request, migration } => (request, migration, true),
     };
     request.validate()?;
@@ -221,6 +250,15 @@ fn project(root: &Path, query: Query) -> Result<Value, String> {
             if collection { Some(&load) } else { None },
             get_reader,
         )?;
+        if let Some(validate_inputs) = project_inputs {
+            return Ok(crate::project_views::project(
+                &request,
+                &old,
+                &current,
+                view,
+                validate_inputs,
+            ));
+        }
         if workflow {
             return Ok(if replay {
                 json!({"replayed":true})
