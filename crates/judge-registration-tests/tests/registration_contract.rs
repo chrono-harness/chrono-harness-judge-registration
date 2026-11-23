@@ -2216,3 +2216,34 @@ fn capture_plan_binds_the_input_set_and_rejects_unregistered_units() {
         .remove(support::PROJECTS);
     assert!(query(&input).is_err());
 }
+
+#[test]
+fn plan_declarations_keep_unselected_bounds_duplicate_methods_and_their_original_errors() {
+    let plan = json!({"operations":["shared","run"],"timeout_seconds":60,"output_limit_bytes":4096,
+        "operation_bounds":{"shared":{"timeout_seconds":9,"output_limit_bytes":512}}});
+    let projects = json!({"projects":[{"id":"p","actions":{"build":{"operation":"shared","tool":"cargo","argv":["build"]}}}],
+        "scripts":[{"id":"s","actions":{"execute":{"operation":"shared","tool":"sh","argv":["s.sh"]}}}]});
+    let mut query =
+        json!({"filemap":{"execution_plans":{"test:fixture":plan}},"projects":projects});
+    let read = |q: &Value| {
+        chrono_judge_registration::execution::plan_declarations(q.to_string().as_bytes())
+    };
+    let result = read(&query).unwrap();
+    assert_eq!(result["plans"]["test:fixture"], plan);
+    assert_eq!(
+        result["methods"]["Ok"]["shared"],
+        json!([
+        {"owner":"project:p","operation":"shared","tool":"cargo","argv":["build"]},
+        {"owner":"script:s","operation":"shared","tool":"sh","argv":["s.sh"]}])
+    );
+    query["projects"] = json!({});
+    assert_eq!(
+        read(&query).unwrap()["methods"]["Err"],
+        "projects collection missing"
+    );
+    query["filemap"]["execution_plans"]["test:fixture"]["operations"] = json!([]);
+    assert_eq!(
+        read(&query).unwrap_err(),
+        "E_EXECUTION_PLAN: invalid operations or bounds: test:fixture"
+    );
+}
