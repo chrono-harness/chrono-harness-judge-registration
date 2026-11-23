@@ -2333,3 +2333,31 @@ fn plan_declarations_keep_unselected_bounds_duplicate_methods_and_their_original
         "E_EXECUTION_PLAN: invalid operations or bounds: test:fixture"
     );
 }
+
+#[test]
+fn classification_documents_read_only_missing_selected_paths() {
+    use chrono_judge_registration::classification_inputs::documents;
+    let present = ["converted", "extra"].into();
+    let known = json!({"converted":{"interpreted":true}});
+    let mut read = vec![];
+    let selected = vec!["converted".into(), "extra".into()];
+    let result = documents(&selected, &present, &known, |p| {
+        read.push(p.to_string());
+        Ok(br#"{"source":"Git"}"#.to_vec())
+    })
+    .unwrap();
+    assert_eq!(result["converted"], json!({"interpreted":true}));
+    assert_eq!(result["extra"], json!({"source":"Git"}));
+    assert_eq!(read, ["extra"]);
+    for denied in [
+        vec!["unselected".into()],
+        vec!["converted".into(), "converted".into()],
+    ] {
+        assert!(documents(&denied, &present, &known, |_| panic!("unexpected Git read")).is_err());
+    }
+    let error = documents(&["extra".into()], &present, &known, |_| {
+        Ok(br#"{"a":0,"a":1}"#.to_vec())
+    })
+    .unwrap_err();
+    assert!(error.starts_with("E_SEMANTIC_INPUT: extra: duplicate JSON member"));
+}

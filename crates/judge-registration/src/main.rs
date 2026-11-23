@@ -67,7 +67,30 @@ fn main() -> std::process::ExitCode {
     use chrono_judge_registration::execution::ExecutionView;
     let mut args = std::env::args_os().skip(1);
     let operation = args.next();
-    if args.next().is_none() {
+    let argument = args.next();
+    if operation.as_deref() == Some(std::ffi::OsStr::new("classification-inputs-v1")) {
+        let result = (|| {
+            let selector = argument
+                .filter(|_| args.next().is_none())
+                .ok_or("E_USAGE: classification-inputs-v1 SELECTOR")?;
+            let request = chrono_harness::decode(&read_request()?)?;
+            let output = chrono_judge_registration::classification_inputs::query(
+                &request,
+                std::path::Path::new(&selector),
+            );
+            let mut out = std::io::stdout().lock();
+            serde_json::to_writer(&mut out, &output).map_err(|e| e.to_string())?;
+            out.flush().map_err(|e| e.to_string())
+        })();
+        return match result {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("{error}");
+                2.into()
+            }
+        };
+    }
+    if argument.is_none() {
         let operation = operation.as_deref().and_then(std::ffi::OsStr::to_str);
         if matches!(
             operation,
