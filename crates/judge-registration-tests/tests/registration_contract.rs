@@ -1101,10 +1101,10 @@ fn install_regression_child(h: &Host, path: &str) -> String {
     sha256(&fs::read(h.root().join(path)).unwrap())
 }
 
-// These four regressions retain exact child streams in the already registered target.
+// Cargo places integration-test output under the target selected by the caller.
 fn retain_regression(h: &Host, case: &str, report: &Value) {
-    let destination = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("target/regression-evidence")
+    let destination = Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join("regression-evidence")
         .join(case);
     fs::create_dir_all(&destination).unwrap();
     fs::write(
