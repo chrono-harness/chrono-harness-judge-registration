@@ -192,7 +192,7 @@ pub struct Method {
     pub output_contract: Option<chrono_harness::verified_verifier::OutputContract>,
 }
 /// A test identity is opaque; its owner and terminal action are explicit registration.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct TestBinding {
     pub owner: String,
     pub action: String,
@@ -317,6 +317,7 @@ pub fn methods(projects: &Value) -> Result<BTreeMap<String, Vec<Method>>, String
 pub enum ExecutionView {
     Methods,
     TestOwners,
+    TestBindings,
 }
 
 impl ExecutionView {
@@ -324,6 +325,7 @@ impl ExecutionView {
         let projects = chrono_harness::json(input)?;
         match self {
             Self::Methods => serde_json::to_writer(&mut output, &methods(&projects)?),
+            Self::TestBindings => serde_json::to_writer(&mut output, &test_bindings(&projects)?),
             Self::TestOwners => {
                 let mut tests_by_owner: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
                 for (test, bindings) in test_bindings(&projects)? {

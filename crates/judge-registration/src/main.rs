@@ -110,12 +110,21 @@ fn main() -> std::process::ExitCode {
         }
         if matches!(
             operation,
-            Some("execution-methods" | "test-owners" | "filemap-views" | "classification-views-v1")
+            Some(
+                "execution-methods"
+                    | "test-owners"
+                    | "test-bindings-v1"
+                    | "filemap-views"
+                    | "classification-views-v1"
+            )
         ) {
             let result = read_request().and_then(|bytes| {
                 let mut out = std::io::stdout().lock();
                 match operation {
                     Some("execution-methods") => ExecutionView::Methods.write(&bytes, &mut out)?,
+                    Some("test-bindings-v1") => {
+                        ExecutionView::TestBindings.write(&bytes, &mut out)?
+                    }
                     Some("test-owners") => ExecutionView::TestOwners.write(&bytes, &mut out)?,
                     _ => {
                         let request = chrono_harness::decode(&bytes)?;
