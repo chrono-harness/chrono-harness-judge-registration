@@ -30,3 +30,5 @@
 `impact-views-v1` 供 FILEMAP 解释两个固定端点的登记。stdin 中的 `originals` 按基线、候选顺序给出两个按仓内路径索引的 UTF-8 原文表，保留换行和空白。`operation.mode` 为 `endpoints` 时提供 `base`、`candidate`、`config` 和可选的 `scheduling`。为 `request` 或 `collection` 时提供已封存的 `request`，收集时还可提供按原单元绑定的 `migration` 原件。
 
 成功响应包含两个端点的配置、登记文档、原始 schema、节点定义、现役测试别名和调度冲突，以及已修复的基线歧义。执行请求还携带输入环境的判定和请求身份。FILEMAP 负责读取原文、计算 DELTA、图闭包及最终影响。登记工具仅在需要额外读取时返回自己的 Git 观察。注册拒绝通过请求响应的 `error` 或普通端点命令的 stderr 返回，解码与进程失败退出 2。
+
+工作流判官调用 `workflow-views-v1`，传入封存请求和两个固定 Git 提交的原始登记文档。登记判官返回该请求对应的配置、方法、收集操作、有效输入和退役声明。语言、方法执行、旧成本及交付凭证由相应使用方核验。传入 `replay: true` 时只重检原登记绑定。两种请求均返回请求 ID、提交对及实际产生的 Git 观察。
