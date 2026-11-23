@@ -109,6 +109,8 @@ fn main() -> std::process::ExitCode {
                     | "execution-declarations-v1"
                     | "configuration-edges-v1"
                     | "scoped-execution-v1"
+                    | "scheduling-tests-v1"
+                    | "scoped-startup-v1"
                     | "test-retirements-v1"
                     | "impact-views-v1"
                     | "workflow-views-v1"
@@ -137,6 +139,13 @@ fn main() -> std::process::ExitCode {
                 }
                 Some("configuration-edges-v1") => {
                     chrono_judge_registration::query_configuration_edges(input)
+                }
+                Some("scoped-startup-v1") => {
+                    chrono_judge_registration::execution::scoped_startup(input)
+                }
+                Some("scheduling-tests-v1") => {
+                    chrono_judge_registration::execution::scheduling_tests(input)
+                        .map(|tests| serde_json::json!(tests))
                 }
                 Some("scoped-execution-v1") => {
                     chrono_judge_registration::execution::scoped_execution(input)

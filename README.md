@@ -62,3 +62,11 @@ CI 向 `check-documents-v1` 的 stdin 提交 JSON，`entry` 为登记入口，`d
 scoped CI 使用 `ci-transition-v1` 处理两个固定提交之间的登记变更。stdin 的 `config` 是登记入口，`base` 与 `candidate` 为完整提交 ID，`documents` 按基线、候选顺序提供以路径为键的登记文档，`retired` 仅列出本次选中的已移除测试。声明调度传入 `"mode":"schedule"`，现场执行传入 `"mode":{"execute":{"environment":{...}}}`。绑定 Git 的调用方先校验固定候选配置，再用 `git.config` 和不含进程列表的 `git.git_facts` 声明读取条件。历史文件按需读取，调度遇到必须执行的历史转换时拒绝。
 
 stdout 返回 `previous`、`candidate`、本次额外产生的 `git_facts` 和 `result`。成功的 `Ok` 提供候选工具声明、转换及可复用工具，并逐项给出所选退役测试的替代关系、原定义及原成本。登记拒绝保留在 `Err`。两种业务结果都退出 0，输入解码或传输失败退出 2。
+
+完整 CI 调度向 `ci-transition-v1` 提交 `"mode":"full-schedule"` 和空的 `retired`。程序返回两端按登记选定的配置、FILEMAP 和项目，以及候选测试的全部操作绑定。调度需要历史解码器时保留原来的拒绝结果。
+
+完整 CI 收集向 `impact-views-v1` 提交 `operation.mode=ci-collection`、封存的 `request` 及两端保留确切 UTF-8 字节的 `originals`。响应以 `commits` 和 `request_id` 绑定请求。`outcome.ready` 提供相同的计划输入，`outcome.error` 保留登记错误。只有历史转换需要原报告时，`outcome.needed` 才列出单元。调用方取得这些原件后使用同一请求和端点文档，并在 `operation.migration` 中提供 `units` 与 `originals` 清单。收集按所选单元重新核验原报告与转换记录。
+
+`scoped-startup-v1` 接受与 `scoped-execution-v1` 相同的单端点输入，供启用启动消费合同的 CI 使用。`bindings` 保留原绑定表，`startup` 中的 `methods`、`plans`、`owners` 分别给出方法的所有者、工具和参数，计划的操作，以及测试的所有者。三项各有独立的成功或错误结果，CI 在实际需要该项时使用。
+
+仅当 scoped 调度声明变更时，CI 向 `scheduling-tests-v1` 提交两个端点。每端含 `scheduling` 和按测试 ID 给出的 `operations` 数组映射。全局调度参数变更时返回两端所有计划中的测试。局部资源或输出声明变更时返回直接受影响的测试，以及在任一端点上与变更操作争用资源或输出的测试。
