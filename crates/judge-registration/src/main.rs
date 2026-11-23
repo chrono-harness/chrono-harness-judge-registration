@@ -71,10 +71,18 @@ fn main() -> std::process::ExitCode {
         let operation = operation.as_deref().and_then(std::ffi::OsStr::to_str);
         if matches!(
             operation,
-            Some("worktree-inputs-v1" | "capture-plan-v1" | "collection-inputs-v1")
+            Some(
+                "worktree-inputs-v1"
+                    | "capture-plan-v1"
+                    | "collection-inputs-v1"
+                    | "impact-views-v1"
+            )
         ) {
             let input = std::io::stdin().lock();
             let result = match operation {
+                Some("impact-views-v1") => std::env::current_dir()
+                    .map_err(|error| error.to_string())
+                    .and_then(|root| chrono_judge_registration::impact_views::query(&root, input)),
                 Some("capture-plan-v1") => chrono_judge_registration::inputs::capture_plan(input),
                 Some("collection-inputs-v1") => {
                     chrono_judge_registration::snapshot_queries::composition(input)

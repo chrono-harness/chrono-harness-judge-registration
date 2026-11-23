@@ -11,6 +11,8 @@ pub mod consumption;
 #[cfg(not(verus_keep_ghost))]
 pub mod execution;
 #[cfg(not(verus_keep_ghost))]
+pub mod impact_views;
+#[cfg(not(verus_keep_ghost))]
 mod input_coverage;
 pub mod inputs;
 #[cfg(not(verus_keep_ghost))]

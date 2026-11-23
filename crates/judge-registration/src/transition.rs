@@ -186,6 +186,18 @@ fn views_using_reports(
         reader.registry_snapshot(&req.candidate.root, &req.base.commit, &req.config_path)?;
     let candidate_snapshot =
         reader.registry_snapshot(&req.candidate.root, &req.candidate.commit, &req.config_path)?;
+    views_from_snapshots(req, base_snapshot, candidate_snapshot, reports, || {
+        Ok(reader)
+    })
+}
+
+pub(crate) fn views_from_snapshots<'a>(
+    req: &Request,
+    base_snapshot: facts::RegistrySnapshot,
+    candidate_snapshot: facts::RegistrySnapshot,
+    reports: Option<&dyn Fn(&[String]) -> Result<chrono_harness::units::FullManifest, String>>,
+    reader: impl FnOnce() -> Result<&'a facts::Reader, String>,
+) -> Result<(Registrations, Registrations, Value), String> {
     let selector_required =
         base_snapshot.selection.is_some() || candidate_snapshot.selection.is_some();
     let binding = view_binding(req, &base_snapshot, &candidate_snapshot);
@@ -251,7 +263,7 @@ fn views_using_reports(
         retained_conversion(req, r, originals.as_ref())
     };
     let (a, b, mut view) = interpret_mode(
-        reader,
+        reader()?,
         &req.candidate.root,
         &req.base.commit,
         &req.candidate.commit,
