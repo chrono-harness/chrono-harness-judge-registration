@@ -8,6 +8,8 @@ pub use schema::{
 };
 // Registration owns full-format schema, snapshot and affected-reference admissibility.
 #[cfg(not(verus_keep_ghost))]
+pub mod classification_inputs;
+#[cfg(not(verus_keep_ghost))]
 pub mod consumption;
 #[cfg(not(verus_keep_ghost))]
 pub mod execution;
@@ -41,7 +43,6 @@ pub mod verified_readiness;
 #[allow(unexpected_cfgs)]
 #[cfg(not(verus_keep_ghost))]
 pub mod verified_scheduling;
-#[cfg(not(verus_keep_ghost))]
 pub mod workflow_views;
 #[cfg(not(verus_keep_ghost))]
 pub mod worktree;
