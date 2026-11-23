@@ -36,3 +36,5 @@
 工作流判官调用 `workflow-views-v1`，传入封存请求和两个固定 Git 提交的原始登记文档。登记判官返回该请求对应的配置、方法、收集操作、有效输入和退役声明。语言、方法执行、旧成本及交付凭证由相应使用方核验。传入 `replay: true` 时只重检原登记绑定。两种请求均返回请求 ID、提交对及实际产生的 Git 观察。
 
 `test-retirements-v1` 供 routes 核对本次涉及的退役测试。stdin 中的 `judge` 指定查询方，`retired_tests` 列出待核对的原测试 ID。`endpoints.mode` 为 `documents` 时传入 `config` 和按路径索引的 `base`、`candidate`。为 `collection` 时从候选检出执行，提供封存的 `request`，历史转换按需使用绑定原单元的 `migration`。stdout 的 `retirements` 按原测试 ID 返回替代测试、共同退役（`Ok: null`）或原始错误。`downstream` 指明是否有登记的后续判官，`request_id` 在收集时绑定请求，在文档模式为 null。端点或传输失败退出 2，错误写入 stderr。
+
+`execution-declarations-v1` 接受含 `filemap` 和 `projects` 的 JSON 对象。它验证完整的测试计划和各操作的限制，再输出 `plans` 映射及 `methods` 的判定。方法成功时 `Ok` 包含所有声明（含重名），失败时 `Err` 保留原始错误，供 routes 在执行单元归属检查后使用。计划不合法时退出 2 并把原因写入 stderr。

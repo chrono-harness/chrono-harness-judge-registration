@@ -343,3 +343,17 @@ impl ExecutionView {
         output.flush().map_err(|error| error.to_string())
     }
 }
+
+/// Interpret the declarations a route planner consumes before constructing its operation graph.
+pub fn plan_declarations(input: impl std::io::Read) -> Result<Value, String> {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Query {
+        filemap: Value,
+        projects: Value,
+    }
+    let query: Query = serde_json::from_reader(input).map_err(|e| e.to_string())?;
+    let plans = plans(&query.filemap)?;
+    // The caller must check unit ownership after decoding plans and before applying methods.
+    Ok(serde_json::json!({"plans":plans, "methods":methods(&query.projects)}))
+}
