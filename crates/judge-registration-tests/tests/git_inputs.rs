@@ -1,12 +1,7 @@
 use super::*;
-#[path = "support/isolated_git.rs"]
-mod chrono_git_boundary;
 
 #[test]
 fn full_consumer_adopts_guard_without_rewriting_history_and_rejects_drift_before_git() {
-    if !chrono_git_boundary::isolated_git() {
-        return;
-    }
     let mut h = BoundHost::new(false, "pass");
     let root = fs::canonicalize(h.host.root()).unwrap();
     let config_file = root.join(".chrono-harness/state/global.gitconfig");
@@ -50,9 +45,6 @@ fn full_consumer_adopts_guard_without_rewriting_history_and_rejects_drift_before
 
 #[test]
 fn initial_inventory_uses_the_same_git_input_guard() {
-    if !chrono_git_boundary::isolated_git() {
-        return;
-    }
     let mut h = BoundHost::new(true, "pass");
     let mut config: Value =
         serde_json::from_slice(&fs::read(h.host.root().join(CONFIG)).unwrap()).unwrap();
