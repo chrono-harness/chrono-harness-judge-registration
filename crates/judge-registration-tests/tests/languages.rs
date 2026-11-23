@@ -168,3 +168,40 @@ fn retirement_structure_requires_a_declared_unique_current_replacement() {
             .contains("replacement missing/ambiguous")
     );
 }
+
+#[test]
+fn retirement_query_binds_each_requested_test_to_its_original_decision() {
+    let old = support::values();
+    let mut candidate = old.clone();
+    candidate.get_mut(support::PROJECTS).unwrap()["projects"] = json!([]);
+    candidate.get_mut(support::WORKFLOW).unwrap()["retirements"] = json!([
+        {"kind":"test","id":"t","replacement":null,"reason":"pair retired"},
+        {"kind":"project","id":"p","replacement":null,"reason":"product retired"}
+    ]);
+    let run = |candidate: &support::Values| {
+        let input = json!({"endpoints":{"mode":"documents","config":support::CONFIG,
+            "base":old,"candidate":candidate},"judge":"routes","retired_tests":["test:t","test:absent","test:t"]});
+        chrono_judge_registration::test_retirements::query(
+            std::path::Path::new("."),
+            input.to_string().as_bytes(),
+        )
+        .unwrap()
+    };
+    let reply = run(&candidate);
+    assert_eq!(reply["request_id"], Value::Null);
+    assert_eq!(
+        reply["downstream"],
+        json!(chrono_judge_registration::downstream_validator(
+            &support::load(&candidate),
+            "routes"
+        ))
+    );
+    assert_eq!(
+        reply["retirements"],
+        json!({"test:t":{"Ok":null},"test:absent":{"Err":"E_RETIREMENT: test is not a removed baseline identity: test:absent"}})
+    );
+    assert_eq!(
+        run(&old)["retirements"]["test:t"]["Err"],
+        "E_RETIREMENT: test is not a removed baseline identity: test:t"
+    );
+}

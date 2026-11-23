@@ -75,12 +75,18 @@ fn main() -> std::process::ExitCode {
                 "worktree-inputs-v1"
                     | "capture-plan-v1"
                     | "collection-inputs-v1"
+                    | "test-retirements-v1"
                     | "impact-views-v1"
                     | "workflow-views-v1"
             )
         ) {
             let input = std::io::stdin().lock();
             let result = match operation {
+                Some("test-retirements-v1") => std::env::current_dir()
+                    .map_err(|error| error.to_string())
+                    .and_then(|root| {
+                        chrono_judge_registration::test_retirements::query(&root, input)
+                    }),
                 Some("impact-views-v1") => std::env::current_dir()
                     .map_err(|error| error.to_string())
                     .and_then(|root| chrono_judge_registration::impact_views::query(&root, input)),
