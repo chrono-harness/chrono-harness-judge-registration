@@ -214,15 +214,20 @@ fn route_inputs_replay_the_checked_view_at_the_sealed_endpoints() {
         "base":docs,"candidate":docs,"historical":{}});
     let mut body = json!({"request":request,"view":view,"selected":[]});
     let read = |q: &Value| {
-        chrono_judge_registration::route_views::effective_inputs(
-            Path::new("."),
-            q.to_string().as_bytes(),
-        )
+        chrono_judge_registration::route_views::effective_inputs(q.to_string().as_bytes())
     };
     assert_eq!(
         read(&body).unwrap(),
         json!({"request_id":request.request_id,"effective_inputs":null})
     );
+    for path in [".", "relative/checkout", "/original/checkout"] {
+        let mut located = request.clone();
+        located.candidate.root = path.into();
+        located.seal().unwrap();
+        body["request"] = json!(located);
+        assert_eq!(read(&body).unwrap()["request_id"], located.request_id);
+    }
+    body["request"] = json!(request);
     body["view"]["binding"]["registry"] = json!("different");
     assert!(read(&body).unwrap_err().contains("binding mismatch"));
     body["view"] = view.clone();

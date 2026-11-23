@@ -3,14 +3,11 @@ use crate::{Registrations, execution, facts, inputs, transition};
 use chrono_harness::{units::Scope, wire::Request};
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::{collections::BTreeSet, io::Read, path::Path};
+use std::{collections::BTreeSet, io::Read};
 
 /// Interpret the actual fixed commits once, retaining the producing Git reader on errors too.
-pub fn views(root: &Path, input: impl Read) -> Result<Value, String> {
+pub fn views(input: impl Read) -> Result<Value, String> {
     let request: Request = serde_json::from_reader(input).map_err(|e| e.to_string())?;
-    if request.candidate.root != root {
-        return Err("route views require the request checkout".into());
-    }
     let reader = facts::Reader::for_request(&request);
     let result = reader.as_ref().map_err(Clone::clone).and_then(|reader| {
         let (old, current, view) = transition::views_with_reader(&request, reader)?;
@@ -39,7 +36,7 @@ struct Inputs {
     selected: BTreeSet<String>,
 }
 
-pub fn effective_inputs(root: &Path, input: impl Read) -> Result<Value, String> {
+pub fn effective_inputs(input: impl Read) -> Result<Value, String> {
     let Inputs {
         request,
         view,
@@ -47,8 +44,7 @@ pub fn effective_inputs(root: &Path, input: impl Read) -> Result<Value, String> 
     } = serde_json::from_reader(input).map_err(|e| e.to_string())?;
     request.validate()?;
     let binding = &view["binding"];
-    if request.candidate.root != root
-        || binding["base"] != request.base.commit
+    if binding["base"] != request.base.commit
         || binding["candidate"] != request.candidate.commit
         || binding["context"] != request.context.sha256
         || binding["registry"] != request.registries.digest

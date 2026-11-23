@@ -85,14 +85,10 @@ fn main() -> std::process::ExitCode {
         ) {
             let input = std::io::stdin().lock();
             let result = match operation {
-                Some("route-views-v1") => std::env::current_dir()
-                    .map_err(|e| e.to_string())
-                    .and_then(|root| chrono_judge_registration::route_views::views(&root, input)),
-                Some("route-inputs-v1") => std::env::current_dir()
-                    .map_err(|e| e.to_string())
-                    .and_then(|root| {
-                        chrono_judge_registration::route_views::effective_inputs(&root, input)
-                    }),
+                Some("route-views-v1") => chrono_judge_registration::route_views::views(input),
+                Some("route-inputs-v1") => {
+                    chrono_judge_registration::route_views::effective_inputs(input)
+                }
                 Some("execution-declarations-v1") => {
                     chrono_judge_registration::execution::plan_declarations(input)
                 }
