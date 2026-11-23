@@ -16,6 +16,19 @@ pub struct Registrations {
     pub(crate) historical: BTreeMap<String, Vec<(String, Value)>>,
     pub(crate) original_schemas: BTreeMap<String, (String, u64)>,
 }
+/// Validate a caller's fixed registry documents and identify the admitted configuration.
+pub fn check_documents(input: impl std::io::Read) -> Result<String> {
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Query {
+        entry: String,
+        documents: BTreeMap<String, Value>,
+    }
+    let query: Query = serde_json::from_reader(input).map_err(|e| e.to_string())?;
+    let registered = Registrations::load(&query.documents, &query.entry)?;
+    Ok(registered.effective_config_path().to_owned())
+}
+
 impl Registrations {
     pub fn load(v: &BTreeMap<String, Value>, config_path: &str) -> Result<Self> {
         let identity = facts::registry_identity(v, config_path)
