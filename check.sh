@@ -45,3 +45,4 @@ prove verify.registration-input-coverage-tests crates/judge-registration-tests/t
 prove verify.registration-scheduling-tests crates/judge-registration-tests/tests/verified_scheduling.rs
 prove verify.registration-snapshot-header-tests crates/judge-registration-tests/tests/verified_snapshot_header.rs
 prove verify.registration-snapshot-records-tests crates/judge-registration-tests/tests/verified_snapshot_records.rs
+prove verify.registration-reference-syntax-tests crates/judge-registration-tests/tests/reference_syntax.rs

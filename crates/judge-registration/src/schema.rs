@@ -13,53 +13,30 @@ use vstd::prelude::*;
 mod fields;
 pub use fields::*;
 
+#[path = "verified_reference_syntax.rs"]
+pub mod reference_syntax;
+use reference_syntax::ReferenceDeclaration;
+
 verus! {
+impl ReferenceDeclaration for source_continuity::ReferenceSyntax {
+    open spec fn fields_view(&self) -> (bool, Seq<char>, Seq<char>, u8) {
+        (source_policy::canonical_source_path(vstd::utf8::encode_utf8(self.file@)),
+            self.before@, self.after@, self.base)
+    }
 
-pub open spec fn declared_reference_valid(form: &source_continuity::ReferenceSyntax) -> bool {
-    source_policy::canonical_source_path(vstd::utf8::encode_utf8(form.file@))
-        && vstd::utf8::encode_utf8(form.before@).len() > 0
-        && vstd::utf8::encode_utf8(form.after@).len() > 0
-        && (vstd::utf8::encode_utf8(form.before@).last() == 34
-            || (form.base == 2 && vstd::utf8::encode_utf8(form.before@).last() == 47))
-        && (vstd::utf8::encode_utf8(form.after@).last() == 34
-            || (form.base == 2 && vstd::utf8::encode_utf8(form.after@).last() == 47))
-        && form.base <= 2
+    fn fields(&self) -> (out: (bool, &str, &str, u8)) {
+        (source_policy::canonical_source_name(self.file.as_str()),
+            self.before.as_str(), self.after.as_str(), self.base)
+    }
 }
 
-pub open spec fn reference_declarations_valid(forms: Seq<source_continuity::ReferenceSyntax>) -> bool {
-    forms.len() <= 250 && forall|i: int| 0 <= i < forms.len() ==> declared_reference_valid(#[trigger] &forms[i])
-}
-
-/// 声明数量、文件身份、开引号和基准必须完整有效；缺失不推测 shell 变量含义。
 pub fn validate_reference_syntax(forms: &Vec<source_continuity::ReferenceSyntax>) -> (out: std::result::Result<(), String>)
-    ensures out.is_ok() == reference_declarations_valid(forms@),
+    ensures out.is_ok() == reference_syntax::reference_declarations_valid(forms@),
         match out { Err(error) => error@ == "E_SOURCE_CONTINUITY: invalid reference syntax declaration"@, Ok(()) => true },
 {
-    if forms.len() > 250 {
-        return Err("E_SOURCE_CONTINUITY: invalid reference syntax declaration".to_string());
-    }
-    let mut i = 0;
-    while i < forms.len()
-        invariant 0 <= i <= forms.len() <= 250,
-            forall|j: int| 0 <= j < i ==> declared_reference_valid(#[trigger] &forms[j]),
-        decreases forms.len() - i,
-    {
-        let form = &forms[i];
-        let before = form.before.as_str().as_bytes();
-        let after = form.after.as_str().as_bytes();
-        if !source_policy::canonical_source_name(form.file.as_str())
-            || before.len() == 0 || after.len() == 0
-            || (before[before.len() - 1] != 34 && !(form.base == 2 && before[before.len() - 1] == 47))
-            || (after[after.len() - 1] != 34 && !(form.base == 2 && after[after.len() - 1] == 47))
-            || form.base > 2 {
-            return Err("E_SOURCE_CONTINUITY: invalid reference syntax declaration".to_string());
-        }
-        i += 1;
-    }
-    Ok(())
+    reference_syntax::validate_reference_syntax(forms.as_slice())
 }
-
-} // verus!
+}
 
 // Strict SPEC §3 structure. Reference/activation policy is evaluated separately.
 #[cfg(not(verus_keep_ghost))]
