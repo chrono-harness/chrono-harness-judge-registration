@@ -21,7 +21,10 @@ fn config_binding(base: &Values, candidate: &Values, entry: &str) -> Result<Valu
     Ok(value!({"base":facts::registry_identity(base, entry)?,
         "candidate":facts::registry_identity(candidate, entry)?}))
 }
-fn load_view(view: &Value, config: &str) -> Result<(Registrations, Registrations), String> {
+pub(crate) fn load_view(
+    view: &Value,
+    config: &str,
+) -> Result<(Registrations, Registrations), String> {
     let a: Values = serde_json::from_value(view["base"].clone()).map_err(|e| e.to_string())?;
     let b: Values = serde_json::from_value(view["candidate"].clone()).map_err(|e| e.to_string())?;
     let identities = config_binding(&a, &b, config)?;

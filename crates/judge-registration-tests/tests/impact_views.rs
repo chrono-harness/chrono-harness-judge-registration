@@ -194,3 +194,58 @@ fn workflow_views_bind_originals_and_preserve_retirement_failures_until_demanded
     request.judge_id = "another".into();
     assert!(run(&request, true).unwrap_err().contains("identity"));
 }
+
+#[test]
+fn route_inputs_replay_the_checked_view_at_the_sealed_endpoints() {
+    use chrono_harness::wire::Request;
+    let docs = values();
+    let registry = chrono_harness::facts::registry_digest(&docs, &docs).unwrap();
+    let endpoint = json!({"commit":"1".repeat(40),"tree":"2".repeat(40),"root":"."});
+    let context = "3".repeat(64);
+    let mut request: Request=serde_json::from_value(json!({
+        "request_id":"","protocol":"chrono-judge/v1","judge_id":"routes","mode":"evaluate",
+        "base":endpoint,"candidate":endpoint,"delta":[],"registries":{"base":"before","candidate":"after","digest":registry},
+        "context":{"path":"context","sha256":context},"impact":{},"prior_results":[],"config_path":CONFIG,
+        "checkout":{"head":"1".repeat(40),"tracked":[],"untracked":[],"index_flags":[]},
+        "runner":{"path":"runner","sha256":context,"version":"fixture"}
+    })).unwrap();
+    request.seal().unwrap();
+    let view = json!({"binding":{"base":endpoint["commit"],"candidate":endpoint["commit"],"context":context,"registry":registry},
+        "base":docs,"candidate":docs,"historical":{}});
+    let mut body = json!({"request":request,"view":view,"selected":[]});
+    let read = |q: &Value| {
+        chrono_judge_registration::route_views::effective_inputs(
+            Path::new("."),
+            q.to_string().as_bytes(),
+        )
+    };
+    assert_eq!(
+        read(&body).unwrap(),
+        json!({"request_id":request.request_id,"effective_inputs":null})
+    );
+    body["view"]["binding"]["registry"] = json!("different");
+    assert!(read(&body).unwrap_err().contains("binding mismatch"));
+    body["view"] = view.clone();
+    body["request"]["scope"] = json!({"kind":"collect","manifest":"reports.json"});
+    assert!(read(&body).unwrap_err().contains("request identity"));
+    request.scope = Some(chrono_harness::units::Scope::Collect {
+        manifest: "reports.json".into(),
+    });
+    request.seal().unwrap();
+    body["request"] = json!(request);
+    assert!(
+        read(&body)
+            .unwrap_err()
+            .contains("collection execution units missing")
+    );
+    let retirement = json!({"endpoints":{"mode":"view","view":view,"config":CONFIG},"judge":"routes","retired_tests":["test:t"]});
+    let response = chrono_judge_registration::test_retirements::query(
+        Path::new("."),
+        retirement.to_string().as_bytes(),
+    )
+    .unwrap();
+    assert_eq!(
+        response["retirements"]["test:t"]["Err"],
+        "E_RETIREMENT: test is not a removed baseline identity: test:t"
+    );
+}

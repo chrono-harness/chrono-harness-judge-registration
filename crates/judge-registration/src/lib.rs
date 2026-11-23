@@ -19,6 +19,8 @@ pub mod inputs;
 #[cfg(not(verus_keep_ghost))]
 mod registrations;
 #[cfg(not(verus_keep_ghost))]
+pub mod route_views;
+#[cfg(not(verus_keep_ghost))]
 pub mod snapshot_queries;
 #[cfg(not(verus_keep_ghost))]
 pub mod test_retirements;
