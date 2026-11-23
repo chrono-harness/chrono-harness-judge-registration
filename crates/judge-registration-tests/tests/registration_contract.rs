@@ -2096,6 +2096,17 @@ fn public_test_owners_preserve_grouped_tests_and_reject_ambiguous_bindings() {
         serde_json::from_slice::<Value>(&output).unwrap(),
         json!({"project:suite":["test:extra","test:suite"]})
     );
+    output.clear();
+    ExecutionView::TestBindings
+        .write(&serde_json::to_vec(&input).unwrap(), &mut output)
+        .unwrap();
+    assert_eq!(
+        serde_json::from_slice::<Value>(&output).unwrap(),
+        json!({
+            "test:suite":[{"owner":"project:suite","action":"default","operation":"suite.check"}],
+            "test:extra":[{"owner":"project:suite","action":"extra","operation":"suite.extra"}]
+        })
+    );
     input["projects"][0]["test_groups"]["extra"] = json!("default");
     output.clear();
     let error = ExecutionView::TestOwners
