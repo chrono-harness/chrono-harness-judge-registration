@@ -10,15 +10,15 @@ cargo fmt --check --manifest-path crates/registration-fixture/Cargo.toml
 cargo fmt --check --manifest-path crates/judge-registration/Cargo.toml
 cargo fmt --check --manifest-path crates/judge-registration-tests/Cargo.toml
 cargo build --locked --manifest-path crates/judge-registration/Cargo.toml
+export CHRONO_TEST_REGISTRATION="$CARGO_TARGET_DIR/debug/chrono-judge-registration"
 CHRONO_TEST_GIT=$(command -v chrono-test-git) || { echo "chrono-test-git is required by registration tests" >&2; exit 1; }
-CHRONO_TEST_GIT_PROFILE_BIN=$(command -v chrono-test-git-profile) || { echo "chrono-test-git-profile is required by registration tests" >&2; exit 1; }
-export CHRONO_TEST_GIT CHRONO_TEST_GIT_PROFILE_BIN
+export CHRONO_TEST_GIT
 # Cargo invokes the test executables with the fixture first on PATH.
 # Build scripts and the compiler keep their normal environment.
 mkdir "$scratch/test-bin"
 ln -s "$CHRONO_TEST_GIT" "$scratch/test-bin/git"
 ln -s "$CARGO_TARGET_DIR/debug/chrono-harness-test-cli" "$scratch/test-bin/chrono-harness"
-test_runner=$(jq -cn --arg path "PATH=$scratch/test-bin:$PATH" '["/usr/bin/env", $path]')
+test_runner=$(jq -cn --arg path "PATH=$scratch/test-bin" '["/usr/bin/env", $path]')
 cargo test --locked --manifest-path crates/judge-registration-tests/Cargo.toml --config "target.'cfg(all())'.runner=$test_runner"
 
 prove() {

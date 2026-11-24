@@ -13,28 +13,26 @@ fn coverage() -> Value {
 
 #[test]
 fn optional_coverage_adopts_without_rewriting_legacy_v3_and_preserves_claim_boundary() {
-    let mut h = BoundHost::new(false, "pass");
-    let (exit, legacy, error) = h.run(false);
-    assert_eq!(exit, 0, "{error}");
-    assert!(
-        legacy["judges"][0]["response"]["outputs"]
-            .get("input_coverage")
-            .is_none()
-    );
-    let old = facts::blob(h.host.root(), &h.host.base, CONFIG).unwrap();
+    let mut h = BoundHost::new();
+    let (exit, legacy) = h.run();
+    assert_eq!(exit, 0, "{legacy}");
+    assert!(legacy["outputs"].get("input_coverage").is_none());
+    let old = request_fixture::blob(h.host.root(), &h.host.base, CONFIG);
     h.host.edit(CONFIG, |config| {
         config["input_closure"]["coverage"] = coverage()
     });
     let (exit, report) = run_with_endpoint_inputs(&h);
     assert_eq!(exit, 0, "{}", report["findings"]);
-    let result = &report["judges"][0]["response"]["outputs"]["input_coverage"];
+    let result = &report["outputs"]["input_coverage"];
     assert_eq!(result["scope"], "declared-domains");
     assert_eq!(result["declaration"], coverage());
     assert_eq!(result["completeness_proven"], false);
-    assert_eq!(report["effective_inputs"]["completeness_proven"], false);
-    assert_eq!(report["parity"]["status"], "unestablished");
     assert_eq!(
-        facts::blob(h.host.root(), &h.host.base, CONFIG).unwrap(),
+        report["outputs"]["effective_inputs"]["completeness_proven"],
+        false
+    );
+    assert_eq!(
+        request_fixture::blob(h.host.root(), &h.host.base, CONFIG),
         old
     );
 }
@@ -57,7 +55,7 @@ fn incomplete_domain_accounting_cannot_claim_declared_complete() {
         "unknown-field",
         "duplicate-domain",
     ] {
-        let mut h = BoundHost::new(false, "pass");
+        let mut h = BoundHost::new();
         h.host.edit(CONFIG, |config| {
             let mut c = coverage();
             match case {
@@ -111,7 +109,7 @@ fn incomplete_domain_accounting_cannot_claim_declared_complete() {
 
 #[test]
 fn unresolved_draft_is_readable_but_not_activated_and_legacy_schemas_reject_coverage() {
-    let mut h = BoundHost::new(false, "pass");
+    let mut h = BoundHost::new();
     h.host.edit(CONFIG, |config| {
         config["input_closure"]["coverage"] = coverage();
         config["input_closure"]["coverage"]["rows"][1]["state"] = json!("unresolved");
@@ -135,7 +133,7 @@ fn unresolved_draft_is_readable_but_not_activated_and_legacy_schemas_reject_cove
 #[test]
 fn coverage_never_admits_unknown_consumers_or_invents_absence() {
     for case in ["unknown-consumer", "file-consumer", "false-absence"] {
-        let mut h = BoundHost::new(false, "pass");
+        let mut h = BoundHost::new();
         h.host.edit(CONFIG, |config| {
             let mut c = coverage();
             if case == "false-absence" {
@@ -171,7 +169,7 @@ fn coverage_never_admits_unknown_consumers_or_invents_absence() {
 
 #[test]
 fn absent_domain_uses_retained_file_absence_and_detects_new_bytes() {
-    let mut h = BoundHost::new(false, "pass");
+    let mut h = BoundHost::new();
     let absent = fs::canonicalize(h.host.root())
         .unwrap()
         .join(".chrono-harness/state/credential.json");
