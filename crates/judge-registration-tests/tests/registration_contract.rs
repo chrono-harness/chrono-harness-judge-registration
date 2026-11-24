@@ -1733,3 +1733,26 @@ fn registration_passes_source_declarations_and_optional_contracts_to_the_install
             .contains("output contract rejected by fixture")
     );
 }
+
+#[test]
+fn input_queries_reject_duplicate_registration_members_before_planning() {
+    let profile =
+        br#"{"config":{"environment":null,"environment":{}},"inspect_execution_units":false}"#;
+    let err = chrono_judge_registration::inputs::input_profile(profile.as_slice()).unwrap_err();
+    assert!(err.contains("duplicate JSON member environment"), "{err}");
+
+    for (documents, key) in [
+        (r#"{"config.json":null,"config.json":{}}"#, "config.json"),
+        (
+            r#"{"config.json":{"environment":null,"environment":{}}}"#,
+            "environment",
+        ),
+    ] {
+        let input = format!(r#"{{"config":"config.json","documents":{documents}}}"#);
+        let err = chrono_judge_registration::inputs::capture_plan(input.as_bytes()).unwrap_err();
+        assert!(
+            err.contains(&format!("duplicate JSON member {key}")),
+            "{err}"
+        );
+    }
+}
