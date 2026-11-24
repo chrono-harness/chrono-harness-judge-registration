@@ -9,12 +9,19 @@ pub const PROTOCOL: &str = "chrono-judge/v1";
 pub const INITIAL_PROTOCOL: &str = "chrono-initial-judge/v1";
 
 pub fn json(bytes: &[u8]) -> Result<Value, String> {
-    let text = std::str::from_utf8(bytes).map_err(|e| e.to_string())?;
-    boundary_compiler::canonicalizer::parse_with_dup_check(text).map_err(|error| match error {
-        boundary_compiler::JcsError::DuplicateKey { key } => format!("duplicate JSON member {key}"),
-        boundary_compiler::JcsError::InvalidJson { reason } => reason,
-        other => other.to_string(),
-    })
+    let value: serde_yaml_ng::Value =
+        serde_json::from_slice(bytes).map_err(|error: serde_json::Error| {
+            let message = error.to_string();
+            if let Some((quoted, location)) = message
+                .strip_prefix("duplicate entry with key ")
+                .and_then(|tail| tail.rsplit_once(" at line "))
+                && let Ok(key) = litrs::StringLit::parse(quoted)
+            {
+                return format!("duplicate JSON member {} at line {location}", key.value());
+            }
+            message
+        })?;
+    serde_json::to_value(value).map_err(|error| error.to_string())
 }
 
 pub fn decode<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, String> {
