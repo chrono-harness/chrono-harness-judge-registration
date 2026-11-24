@@ -14,6 +14,17 @@ pub(crate) struct Stream {
     output: BufReader<ChildStdout>,
 }
 impl Stream {
+    pub(crate) fn with<T>(
+        protocol: &'static str,
+        cwd: Option<&Path>,
+        action: impl FnOnce(&mut Self) -> Result<T>,
+    ) -> Result<T> {
+        let mut stream = Self::start(protocol, cwd)?;
+        let result = action(&mut stream);
+        let finished = stream.finish();
+        result.and_then(|value| finished.map(|()| value))
+    }
+
     pub(crate) fn start(protocol: &'static str, cwd: Option<&Path>) -> Result<Self> {
         let mut command = Command::new("chrono-harness");
         if let Some(cwd) = cwd {
