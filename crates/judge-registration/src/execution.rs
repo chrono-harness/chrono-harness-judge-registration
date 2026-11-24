@@ -180,7 +180,7 @@ pub struct Method {
     pub tool: String,
     pub argv: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub output_contract: Option<chrono_harness::verified_verifier::OutputContract>,
+    pub output_contract: Option<Value>,
 }
 /// A test identity is opaque; its owner and terminal action are explicit registration.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -287,6 +287,7 @@ pub fn methods(projects: &Value) -> Result<BTreeMap<String, Vec<Method>>, String
                 .values()
             {
                 let operation = action["operation"].as_str().ok_or("operation missing")?;
+                crate::schema::output_contract(&action["output_contract"])?;
                 let method = Method {
                     owner: format!("{prefix}:{}", row["id"].as_str().ok_or("owner missing")?),
                     operation: operation.into(),
@@ -296,7 +297,6 @@ pub fn methods(projects: &Value) -> Result<BTreeMap<String, Vec<Method>>, String
                     output_contract: serde_json::from_value(action["output_contract"].clone())
                         .map_err(|e| e.to_string())?,
                 };
-                chrono_harness::verified_verifier::validate_contract(&method.output_contract)?;
                 out.entry(operation.into()).or_default().push(method);
             }
         }
@@ -354,9 +354,7 @@ fn scoped_endpoint(input: impl std::io::Read, startup: bool) -> Result<Value, St
         plans(&filemap)?;
     }
     if let Some(declaration) = filemap.get("reference_syntax") {
-        let syntax =
-            serde_json::from_value(declaration.clone()).map_err(|error| error.to_string())?;
-        crate::validate_reference_syntax(&syntax)?;
+        crate::validate_reference_syntax(declaration)?;
     }
     if !startup {
         return serde_json::to_value(bindings).map_err(|error| error.to_string());
