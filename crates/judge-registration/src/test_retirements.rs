@@ -1,8 +1,8 @@
 //! Resolve only the test retirements requested by a planner.
+use crate::collection;
 use crate::wire::Request;
 use crate::{Registrations, downstream_validator, validate_test_retirement};
 use crate::{historical_git::InstalledGit, transition::installed_views};
-use chrono_harness::units;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, io::Read, path::Path};
@@ -11,7 +11,7 @@ use std::{collections::BTreeMap, io::Read, path::Path};
 #[serde(deny_unknown_fields)]
 struct Migration {
     units: Vec<String>,
-    originals: units::FullManifest,
+    originals: collection::FullManifest,
 }
 
 #[derive(Deserialize)]

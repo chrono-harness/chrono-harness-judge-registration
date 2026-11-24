@@ -83,3 +83,41 @@ impl Drop for Stream {
         }
     }
 }
+
+/// Invoke a one-request installed tool and collect the child's original outcome.
+pub(crate) fn query<T: DeserializeOwned>(
+    program: &str,
+    operation: &str,
+    cwd: Option<&Path>,
+    request: &impl Serialize,
+) -> Result<T> {
+    let bytes = serde_json::to_vec(request).map_err(|e| e.to_string())?;
+    let mut command = Command::new(program);
+    if let Some(root) = cwd {
+        command.current_dir(root);
+    }
+    let mut child = command
+        .arg(operation)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("start {program} {operation}: {error}"))?;
+    let mut stdin = child.stdin.take().unwrap();
+    let (output, written) = std::thread::scope(|scope| {
+        let writer = scope.spawn(move || stdin.write_all(&bytes));
+        let output = child.wait_with_output();
+        (output, writer.join().expect("JSON input writer panicked"))
+    });
+    let output = output.map_err(|error| error.to_string())?;
+    if !output.status.success() {
+        let message = String::from_utf8_lossy(&output.stderr);
+        return Err(if message.trim().is_empty() {
+            format!("{program} {operation}: {}", output.status)
+        } else {
+            message.trim_end().to_owned()
+        });
+    }
+    written.map_err(|error| error.to_string())?;
+    serde_json::from_slice(&output.stdout).map_err(|e| format!("{program} {operation}: {e}"))
+}

@@ -10,7 +10,11 @@ pub use schema::{
 #[cfg(not(verus_keep_ghost))]
 pub mod classification_inputs;
 #[cfg(not(verus_keep_ghost))]
+pub mod collection;
+#[cfg(not(verus_keep_ghost))]
 pub mod execution;
+#[cfg(not(verus_keep_ghost))]
+pub mod facts;
 #[cfg(not(verus_keep_ghost))]
 mod historical_git;
 #[cfg(not(verus_keep_ghost))]
@@ -67,7 +71,7 @@ mod schema;
 #[cfg(not(verus_keep_ghost))]
 use crate::wire::{Finding, Request, Response, Status};
 #[cfg(not(verus_keep_ghost))]
-use chrono_harness::{facts, json, no_symlink_parents, sha256};
+use chrono_harness::{json, no_symlink_parents, sha256};
 #[cfg(not(verus_keep_ghost))]
 pub use registrations::{NodeDefinition, NodeView, Registrations};
 #[cfg(not(verus_keep_ghost))]
@@ -78,19 +82,6 @@ use std::{
     fs,
     path::Path,
 };
-/// A policy custodian consumes the committed artifact and file declarations.
-#[cfg(not(verus_keep_ghost))]
-pub fn read_custody_inputs(
-    config_path: &str,
-    mut read: impl FnMut(&str) -> Result<Vec<u8>>,
-) -> Result<(Value, Value)> {
-    let config = facts::selected_config_with(config_path, &mut read)?;
-    let path = worktree::custody_filemap_path(&config)?;
-    let filemap = chrono_harness::json(&read(path)?)?;
-    worktree::validate_custody_filemap(&filemap)?;
-    Ok((config, filemap))
-}
-
 /// Maximum input bytes for the bounded protocol and project binding queries.
 pub const PROJECTS_INPUT_LIMIT: usize = 64 * 1024 * 1024;
 
@@ -209,7 +200,7 @@ pub fn nonartifact_paths(config: &Value, paths: &[String]) -> Vec<String> {
 }
 
 #[cfg(not(verus_keep_ghost))]
-fn outside_artifacts(artifacts: &[&str], paths: &[String]) -> Vec<String> {
+fn outside_artifacts(artifacts: &[String], paths: &[String]) -> Vec<String> {
     paths
         .iter()
         .filter(|p| !artifacts.iter().any(|a| p.starts_with(a)))
@@ -531,37 +522,18 @@ fn readiness(
     n: &Registrations,
     r: &mut Response,
 ) -> Result<()> {
-    chrono_harness::units::report_paths(
-        n.config(),
-        n.workflow()["integration"]["evidence"].as_str(),
-    )?;
-    if let Some(block) = chrono_harness::units::full_execution_units(n.config())? {
-        let units: BTreeMap<String, chrono_harness::units::Unit> =
-            serde_json::from_value(block["units"].clone()).map_err(|e| e.to_string())?;
+    if n.config().get("execution_units").is_some() {
+        wire::evidence::<()>(value!({"operation":"report-paths","profile":n.config(),
+            "evidence":n.workflow()["integration"]["evidence"].as_str()}))?;
+    }
+    if let Some(block) = crate::collection::execution_units(n.config())? {
         let plans = execution::plans(n.filemap())?;
-        let shared = serde_json::from_value(block["shared_operations"].clone())
-            .map_err(|e| e.to_string())?;
-        let mut operation_sets: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-        for (unit, definition) in &units {
-            for test in &definition.tests {
-                let plan = plans
-                    .get(test)
-                    .ok_or_else(|| format!("E_UNIT_ASSIGNMENT: unknown plan {test}"))?;
-                for operation in &plan.operations {
-                    operation_sets
-                        .entry(operation.clone())
-                        .or_default()
-                        .insert(unit.clone());
-                }
-            }
-        }
-        chrono_harness::units::assignments(
-            &units,
-            &plans.keys().cloned().collect(),
-            &shared,
-            &operation_sets,
-        )
-        .map_err(|e| format!("E_UNIT_ASSIGNMENT: {e}"))?;
+        crate::runner_session::query::<()>(
+            "chrono-judge-routes",
+            "check-unit-assignments-v1",
+            None,
+            &value!({"execution_units":block,"plans":plans}),
+        )?;
     }
     for (name, v) in [
         ("config", &n.config),

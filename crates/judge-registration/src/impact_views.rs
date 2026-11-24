@@ -1,6 +1,6 @@
 //! Registration facts used by FILEMAP for a pair of fixed endpoints.
+use crate::facts;
 use crate::{Registrations, ambiguity_repaired, execution::Scheduling};
-use chrono_harness::facts;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
@@ -135,7 +135,7 @@ fn pair(old: &Registrations, current: &Registrations) -> Result<Value, String> {
 #[serde(deny_unknown_fields)]
 struct MigrationInputs {
     units: Vec<String>,
-    originals: chrono_harness::units::FullManifest,
+    originals: crate::collection::FullManifest,
 }
 
 pub fn query(root: &Path, input: impl Read) -> Result<Value, String> {

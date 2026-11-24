@@ -3,9 +3,11 @@ use super::schema;
 #[cfg(not(verus_keep_ghost))]
 use crate::Registrations;
 #[cfg(not(verus_keep_ghost))]
+use crate::facts;
+#[cfg(not(verus_keep_ghost))]
 use crate::wire::{self, Request};
 #[cfg(not(verus_keep_ghost))]
-use chrono_harness::{facts, file_identity, relative_path, sha256};
+use chrono_harness::{file_identity, relative_path, sha256};
 #[cfg(not(verus_keep_ghost))]
 use serde_json::{Value, json};
 #[cfg(not(verus_keep_ghost))]
@@ -37,12 +39,14 @@ pub fn input_profile(input: impl std::io::Read) -> Result<Value, String> {
     }
     let query: Query = serde_json::from_reader(input).map_err(|error| error.to_string())?;
     let credentials = if query.config["schema_version"] == 4 {
-        chrono_harness::prepared::credential_environment(&query.config)?
+        wire::evidence::<std::collections::BTreeSet<String>>(
+            json!({"operation":"credential-environment","config":query.config}),
+        )?
     } else {
         Default::default()
     };
     let units = if query.inspect_execution_units {
-        Some(chrono_harness::units::full_execution_units(&query.config)?.is_some())
+        Some(crate::collection::execution_units(&query.config)?.is_some())
     } else {
         None
     };
@@ -228,7 +232,7 @@ impl RetainedInputs<'_> {
     fn identity(
         &mut self,
         value: &Value,
-        originals: Option<(&Value, Option<&chrono_harness::prepared::ArtifactTransport>)>,
+        originals: Option<(&Value, Option<&crate::collection::ArtifactTransport>)>,
     ) -> Result<Option<(String, u64)>, String> {
         match retained_shape(value)? {
             Retained::Absent => Ok(None),
@@ -271,7 +275,9 @@ impl RetainedInputs<'_> {
 pub fn environment(config: &Value, snapshot: &Value) -> Result<BTreeMap<String, String>, String> {
     let mut out = BTreeMap::new();
     let credentials = if config["schema_version"] == 4 {
-        chrono_harness::prepared::credential_environment(config)?
+        wire::evidence::<std::collections::BTreeSet<String>>(
+            json!({"operation":"credential-environment","config":config}),
+        )?
     } else {
         Default::default()
     };
@@ -345,12 +351,11 @@ fn assigned_plans(
     r: &Registrations,
     unit: &str,
 ) -> Result<std::collections::BTreeSet<String>, String> {
-    use chrono_harness::units::{self, Unit};
-    let units: BTreeMap<String, Unit> =
-        serde_json::from_value(r.config()["execution_units"]["units"].clone())
-            .map_err(|e| format!("E_UNIT_ASSIGNMENT: {e}"))?;
     let plans = crate::execution::plans(r.filemap())?;
-    units::select(&units, &plans.keys().cloned().collect(), unit)
+    crate::wire::evidence(json!({
+        "operation":"unit-tests", "unit":unit, "units":r.config()["execution_units"]["units"],
+        "selected":plans.keys().collect::<Vec<_>>(),
+    }))
 }
 
 #[cfg(not(verus_keep_ghost))]
@@ -469,12 +474,10 @@ pub fn collection_required_files(
     new: &Registrations,
     selected: &std::collections::BTreeSet<String>,
 ) -> Result<std::collections::BTreeSet<String>, String> {
-    let units = chrono_harness::units::full_execution_units(new.config())?
+    let units = crate::collection::execution_units(new.config())?
         .ok_or("collection execution units missing")?;
-    let units: BTreeMap<String, chrono_harness::units::Unit> =
-        serde_json::from_value(units["units"].clone()).map_err(|e| e.to_string())?;
     let mut plans = std::collections::BTreeSet::new();
-    for unit in chrono_harness::units::required(&units, selected) {
+    for unit in crate::collection::required(&units["units"], selected)? {
         plans.extend(assigned_plans(new, &unit)?);
         if endpoint == "base"
             && old.config()["execution_units"]["units"]
@@ -589,7 +592,7 @@ pub fn validate_retained_at(
     new: &Registrations,
     artifacts: &Value,
     root: &Path,
-    transport: Option<&chrono_harness::prepared::ArtifactTransport>,
+    transport: Option<&crate::collection::ArtifactTransport>,
 ) -> Result<Value, String> {
     validate_inner(req, old, new, Some((artifacts, root, transport)), false)
 }
@@ -598,11 +601,7 @@ fn validate_inner(
     req: &Request,
     old: &Registrations,
     new: &Registrations,
-    artifacts: Option<(
-        &Value,
-        &Path,
-        Option<&chrono_harness::prepared::ArtifactTransport>,
-    )>,
+    artifacts: Option<(&Value, &Path, Option<&crate::collection::ArtifactTransport>)>,
     live: bool,
 ) -> Result<Value, String> {
     let mut store = RetainedInputs {
@@ -623,7 +622,7 @@ fn validate_endpoints(
     req: &Request,
     old: &Registrations,
     new: &Registrations,
-    originals: Option<(&Value, Option<&chrono_harness::prepared::ArtifactTransport>)>,
+    originals: Option<(&Value, Option<&crate::collection::ArtifactTransport>)>,
     live: bool,
     store: &mut RetainedInputs<'_>,
 ) -> Result<Value, String> {

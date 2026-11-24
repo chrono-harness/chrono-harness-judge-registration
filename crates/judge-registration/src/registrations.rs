@@ -1,6 +1,6 @@
 //! Shared strict registration data; loading does not assert readiness or semantic validity.
+use crate::facts;
 use crate::{NodeKind, Result, schema};
-use chrono_harness::facts;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 pub struct Registrations {

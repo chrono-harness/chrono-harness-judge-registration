@@ -106,9 +106,9 @@ impl Scheduling {
         let b = &self.claims[b];
         a.resources.iter().any(|r| b.resources.contains(r))
             || a.outputs.iter().any(|x| {
-                b.outputs
-                    .iter()
-                    .any(|y| chrono_harness::units::overlap(x, y))
+                b.outputs.iter().any(|y| {
+                    std::path::Path::new(x).starts_with(y) || std::path::Path::new(y).starts_with(x)
+                })
             })
     }
 }

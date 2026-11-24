@@ -141,10 +141,7 @@ impl<'a> InstalledGit<'a> {
     pub(crate) fn inventory(&self) -> Result<Inventory> {
         self.query(json!({"op":"candidate-inventory"}))
     }
-    pub(crate) fn snapshot(
-        &self,
-        endpoint: &str,
-    ) -> Result<chrono_harness::facts::RegistrySnapshot> {
+    pub(crate) fn snapshot(&self, endpoint: &str) -> Result<crate::facts::RegistrySnapshot> {
         #[derive(serde::Deserialize)]
         struct Snapshot {
             values: BTreeMap<String, Value>,
@@ -189,7 +186,7 @@ impl InstalledGit<'_> {
         &self,
         root: &Path,
         commit: &str,
-        artifacts: &[&str],
+        artifacts: &[String],
     ) -> Result<Checkout> {
         if self.endpoint(root, commit)? != "candidate" {
             return Err("expected candidate checkout".into());

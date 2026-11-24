@@ -1,8 +1,9 @@
 //! Finite candidate-owned decoders for explicitly named historical profiles.
+use crate::facts;
 use crate::wire::{self, Request};
 use crate::{Registrations, execution, historical_git::InstalledGit};
 use chrono_harness::{
-    CommandSpec, facts, json,
+    CommandSpec, json,
     observation::{self, Tool},
     run_process_observed, sha256,
 };
@@ -123,7 +124,7 @@ pub(crate) fn validate_retained_snapshots(
 pub(crate) fn installed_views(
     request: &Request,
     reader: &InstalledGit<'_>,
-    reports: Option<&dyn Fn(&[String]) -> Result<chrono_harness::units::FullManifest, String>>,
+    reports: Option<&dyn Fn(&[String]) -> Result<crate::collection::FullManifest, String>>,
 ) -> Result<(Registrations, Registrations, Value), String> {
     views_from_snapshots(
         request,
@@ -171,7 +172,7 @@ pub(crate) fn views_from_snapshots<'a>(
     req: &Request,
     base_snapshot: facts::RegistrySnapshot,
     candidate_snapshot: facts::RegistrySnapshot,
-    reports: Option<&dyn Fn(&[String]) -> Result<chrono_harness::units::FullManifest, String>>,
+    reports: Option<&dyn Fn(&[String]) -> Result<crate::collection::FullManifest, String>>,
     reader: impl Fn() -> Result<&'a InstalledGit<'a>, String>,
     check_binding: bool,
 ) -> Result<(Registrations, Registrations, Value), String> {
@@ -224,13 +225,11 @@ pub(crate) fn views_from_snapshots<'a>(
     let acquire = |r: &Registrations, profile: &Value| {
         let originals = reports
             .map(|load| {
-                let block = chrono_harness::units::full_execution_units(r.config())?
+                let block = crate::collection::execution_units(r.config())?
                     .ok_or("full collection units missing")?;
-                let units =
-                    serde_json::from_value(block["units"].clone()).map_err(|e| e.to_string())?;
                 let test = format!("test:{}", profile["test"].as_str().ok_or("migration test")?);
                 let required =
-                    chrono_harness::units::required(&units, &[test].into_iter().collect());
+                    crate::collection::required(&block["units"], &[test].into_iter().collect())?;
                 if required.is_empty() {
                     return Err("E_COLLECTION_INPUT: migration test has no registered unit".into());
                 }
@@ -287,7 +286,7 @@ pub fn interpret(
 fn retained_conversion(
     req: &Request,
     r: &Registrations,
-    reports: Option<&chrono_harness::units::FullManifest>,
+    reports: Option<&crate::collection::FullManifest>,
 ) -> Result<Option<Value>, String> {
     let Some(crate::wire::Scope::Collect { manifest }) = &req.scope else {
         return Ok(None);
@@ -302,7 +301,7 @@ fn retained_conversion(
 fn read_retained_conversion(
     req: &Request,
     r: &Registrations,
-    reports: Option<&chrono_harness::units::FullManifest>,
+    reports: Option<&crate::collection::FullManifest>,
     manifest_path: &str,
     originals: &mut crate::runner_session::Stream,
 ) -> Result<Option<Value>, String> {

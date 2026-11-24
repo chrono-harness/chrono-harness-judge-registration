@@ -1,7 +1,8 @@
 //! Initial inventory checks share reference policy without inventing prior history.
+use crate::facts;
 use crate::wire::{self, Response, Status};
 use crate::{Registrations, Result, historical_git::InstalledGit, issue};
-use chrono_harness::{facts, initial::Profile, no_symlink_parents, sha256};
+use chrono_harness::{initial::Profile, no_symlink_parents, sha256};
 use serde_json::{Value, json};
 use std::fs;
 

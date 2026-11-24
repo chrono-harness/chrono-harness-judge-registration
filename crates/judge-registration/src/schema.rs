@@ -251,7 +251,9 @@ pub fn config(v: &Value) -> Result {
     ];
     if matches!(v["schema_version"].as_u64(), Some(3 | 4)) {
         fields.push("facts_git");
-        chrono_harness::facts::git_declaration(v)?;
+        wire::evidence::<()>(
+            serde_json::json!({"operation":"validate-git-declaration","config":v}),
+        )?;
         if let Some(units) = v.get("execution_units") {
             fields.push("execution_units");
             validate_execution_units(units)?;
@@ -276,7 +278,9 @@ pub fn config(v: &Value) -> Result {
         }
     }
     if v["schema_version"] == 4 {
-        chrono_harness::prepared::declaration(v)?;
+        wire::evidence::<()>(
+            serde_json::json!({"operation":"validate-preparation-declaration","config":v}),
+        )?;
     } else {
         object(&v["canonical_check"], &["operation", "argv"], &[])?;
     }
@@ -415,7 +419,9 @@ pub fn config(v: &Value) -> Result {
 
 #[cfg(not(verus_keep_ghost))]
 fn validate_execution_units(v: &Value) -> Result {
-    chrono_harness::units::report_paths(&serde_json::json!({"execution_units":v}), None)?;
+    wire::evidence::<()>(
+        serde_json::json!({"operation":"report-paths","profile":{"execution_units":v}}),
+    )?;
     let fields = object(
         v,
         &[
@@ -711,16 +717,16 @@ pub fn judges(v: &Value) -> Result {
     common(v, &["migration_validator", "judges"])?;
     string(&v["migration_validator"])?;
     unique(&v["judges"], Some("id"))?;
-    let b: Vec<chrono_harness::wire::Binding> =
-        serde_json::from_value(v["judges"].clone()).map_err(|e| e.to_string())?;
-    for j in &b {
-        path(&Value::from(j.executable.clone()))?;
-        if j.version.is_empty() {
+    for binding in array(&v["judges"])? {
+        path(&binding["executable"])?;
+        if string(&binding["version"])?.is_empty() {
             return Err("empty judge version".into());
         }
-        hash(&serde_json::to_value(&j.sha256).map_err(|e| e.to_string())?)?;
+        hash(&binding["sha256"])?;
     }
-    chrono_harness::full::schedule(&b)?;
+    wire::evidence::<()>(
+        serde_json::json!({"operation":"validate-schedule","bindings":v["judges"]}),
+    )?;
     Ok(())
 }
 #[cfg(not(verus_keep_ghost))]
