@@ -38,22 +38,28 @@ impl FactsFixture {
                     git,
                 })
             }
-            "observed" => {
+            mode @ ("observed" | "config") => {
                 let root = std::env::current_dir().map_err(|e| e.to_string())?;
                 let config = field(&header, "config")?.to_owned();
                 let candidate = field(&header, "candidate")?.to_owned();
-                if !header["base"].is_null() {
-                    return Err("initial fixture received a baseline".into());
-                }
-                let git = facts::Reader::from_observations(
-                    &root,
-                    &config,
-                    &candidate,
-                    &header["observations"],
-                )?;
+                let base: Option<String> =
+                    serde_json::from_value(header["base"].clone()).map_err(|e| e.to_string())?;
+                let git = if mode == "observed" {
+                    facts::Reader::from_observations(
+                        &root,
+                        &config,
+                        &candidate,
+                        &header["observations"],
+                    )?
+                } else {
+                    if base.is_none() {
+                        return Err("configured fixture requires two endpoints".into());
+                    }
+                    facts::Reader::for_config(&root, &config)?
+                };
                 Ok(Self {
                     root,
-                    base: None,
+                    base,
                     candidate,
                     config,
                     git,
@@ -80,6 +86,10 @@ impl FactsFixture {
                 Ok(json!(
                     std::fs::canonicalize(top.trim()).map_err(|e| e.to_string())?
                 ))
+            }
+            "verify-config" => {
+                git.verify_config(root, field(query, "candidate")?)?;
+                Ok(Value::Null)
             }
             "verify-tree" => Ok(json!(git.verify_oid(root, endpoint()?)?)),
             "verify-commit" => Ok(json!(git.verify_oid(root, field(query, "commit")?)?)),

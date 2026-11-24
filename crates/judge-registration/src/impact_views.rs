@@ -202,11 +202,23 @@ fn project(root: &Path, query: Query) -> Result<Value, String> {
             let before = snapshot(&config, before)?.values;
             let after = snapshot(&config, after)?.values;
             let (old, current, facts) = if scheduling {
-                let reader = facts::Reader::for_config(root, &config)?;
-                let (old, current, _) = crate::interpret_scheduling_with_reader(
-                    &reader, root, &base, &candidate, &config, before, after,
+                let reader = crate::historical_git::InstalledGit::configured(
+                    root, &base, &candidate, &config,
                 )?;
-                (old, current, Some(reader.observation()))
+                reader.query::<()>(json!({"op":"verify-config","candidate":candidate}))?;
+                let result = crate::transition::interpret_ci_documents(
+                    || Ok(&reader),
+                    root,
+                    &base,
+                    &candidate,
+                    &config,
+                    before,
+                    after,
+                    None,
+                );
+                let observation = reader.finish();
+                let (old, current, _) = result?;
+                (old, current, Some(observation?))
             } else {
                 (
                     Registrations::load(&before, &config)?,
