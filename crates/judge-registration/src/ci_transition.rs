@@ -1,5 +1,9 @@
 //! Scoped CI consumes only candidate execution tools, the conversion and selected retirements.
-use crate::{Registrations, facts, transition};
+use crate::{
+    Registrations, facts,
+    historical_git::{HistoricalGit, InstalledGit},
+    transition,
+};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
@@ -85,20 +89,22 @@ pub fn query(root: &Path, input: impl Read) -> Result<Value, String> {
     } = serde_json::from_reader(input).map_err(|e| e.to_string())?;
     facts::full_oid(&base)?;
     facts::full_oid(&candidate)?;
-    let reader = std::cell::OnceCell::new();
-    let get_reader = || {
-        reader.get_or_init(|| match (&git, &mode) {
-            (Some(binding), _) => facts::Reader::from_observations(
-                root, &binding.config, &candidate,
-                &json!({"git_facts":binding.git_facts,"environment":binding.git_facts["environment"]}),
-            ),
-            (None, Mode::Schedule | Mode::FullSchedule) => Ok(facts::Reader::legacy()),
-            (None, Mode::Execute { .. }) => {
-                let reader = facts::Reader::for_config(root, &config)?;
-                reader.verify_config(root, &candidate)?;
+    let installed = std::cell::OnceCell::new();
+    let legacy = facts::Reader::legacy();
+    let get_reader = || -> Result<&dyn HistoricalGit, String> {
+        if git.is_none() && matches!(mode, Mode::Schedule | Mode::FullSchedule) {
+            return Ok(&legacy);
+        }
+        let reader = installed.get_or_init(|| match &git {
+            Some(binding) => InstalledGit::observed(root, Some(&base), &candidate, &binding.config,
+                &json!({"git_facts":binding.git_facts,"environment":binding.git_facts["environment"]})),
+            None => {
+                let reader = InstalledGit::configured(root, &base, &candidate, &config)?;
+                reader.query::<()>(json!({"op":"verify-config","candidate":candidate}))?;
                 Ok(reader)
             }
-        }).as_ref().map_err(Clone::clone)
+        }).as_ref().map_err(Clone::clone)?;
+        Ok(reader)
     };
     let result = (|| -> Result<Value, String> {
         let environment = match &mode {
@@ -130,7 +136,15 @@ pub fn query(root: &Path, input: impl Read) -> Result<Value, String> {
             "conversion":view["conversion"],"retirements":retirements(&old,&new,&retired)?}),
         )
     })();
-    let observed = git.and_then(|_| reader.into_inner()?.ok().map(|reader| reader.observation()));
+    let receipt = installed
+        .into_inner()
+        .and_then(Result::ok)
+        .map(InstalledGit::finish)
+        .transpose();
+    let (result, observed) = match receipt {
+        Ok(observed) => (result, git.and(observed)),
+        Err(error) => (result.and(Err(error)), None),
+    };
     Ok(json!({"previous":base,"candidate":candidate,"git_facts":observed,"result":result}))
 }
 

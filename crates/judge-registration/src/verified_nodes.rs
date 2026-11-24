@@ -1,6 +1,6 @@
 //! 实际登记节点类型及其完整复制／相等语义。
 #[cfg(not(verus_keep_ghost))]
-use chrono_harness::verus;
+use vstd::prelude::verus;
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
 

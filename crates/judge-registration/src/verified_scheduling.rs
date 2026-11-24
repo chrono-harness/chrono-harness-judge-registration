@@ -1,7 +1,7 @@
 //! 调度只要求参与计划的操作都有声明，真实生产声明可独立保留。
-#[cfg(not(verus_keep_ghost))]
-use chrono_harness::verus;
 use std::collections::{BTreeMap, BTreeSet};
+#[cfg(not(verus_keep_ghost))]
+use vstd::prelude::verus;
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
 

@@ -1,5 +1,5 @@
 //! Registration declarations and retained inputs used by the project executor.
-use crate::{Registrations, execution, facts, inputs, transition};
+use crate::{Registrations, execution, historical_git::InstalledGit, inputs, transition};
 use chrono_harness::{prepared::ArtifactTransport, wire::Request};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -105,8 +105,25 @@ pub fn evidence(root: &Path, input: impl Read) -> Result<Value, String> {
             supplied_view,
             effective_inputs,
         } => {
-            let reader = facts::Reader::for_config(root, &request.config_path)?;
-            transition::validate_retained_view(&request, &reader, root, &supplied_view)?;
+            let reader = InstalledGit::configured(
+                root,
+                &request.base.commit,
+                &request.candidate.commit,
+                &request.config_path,
+            )?;
+            let base = reader.snapshot("base")?;
+            let candidate = reader.snapshot("candidate")?;
+            let result = transition::validate_retained_snapshots(
+                &request,
+                &reader,
+                root,
+                &supplied_view,
+                base,
+                candidate,
+            );
+            let closed = reader.finish();
+            result?;
+            closed?;
             inputs::project_effective(&effective_inputs, &old, &current, request.scope.as_ref())?
         }
     };

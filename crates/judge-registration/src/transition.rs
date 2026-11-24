@@ -95,6 +95,17 @@ pub fn validate_retained_view(
     let base = reader.registry_snapshot(declaration_root, &req.base.commit, &req.config_path)?;
     let candidate =
         reader.registry_snapshot(declaration_root, &req.candidate.commit, &req.config_path)?;
+    validate_retained_snapshots(req, reader, declaration_root, supplied, base, candidate)
+}
+
+pub(crate) fn validate_retained_snapshots(
+    req: &Request,
+    reader: &impl HistoricalGit,
+    declaration_root: &Path,
+    supplied: &Value,
+    base: facts::RegistrySnapshot,
+    candidate: facts::RegistrySnapshot,
+) -> Result<(), String> {
     if facts::registry_digest(&base.values, &candidate.values)? != req.registries.digest {
         return Err("E_COLLECTION_INPUT: original registration endpoint digest".into());
     }
@@ -314,17 +325,20 @@ pub fn interpret(
     candidate: Values,
     env: &BTreeMap<String, String>,
 ) -> Result<(Registrations, Registrations, Value), String> {
-    let reader = facts::Reader::for_config(root, config)?;
-    interpret_with_reader(
-        &reader,
+    let reader = InstalledGit::configured(root, base, candidate_oid, config)?;
+    reader.query::<()>(value!({"op":"verify-config","candidate":candidate_oid}))?;
+    let result = interpret_ci_documents(
+        || Ok(&reader),
         root,
         base,
         candidate_oid,
         config,
         raw,
         candidate,
-        env,
-    )
+        Some(env),
+    );
+    let closed = reader.finish();
+    result.and_then(|value| closed.map(|_| value))
 }
 /// Reuse the caller's selected facts reader and retain its complete acquisition record.
 pub fn interpret_with_reader(
@@ -489,8 +503,8 @@ fn retained_conversion(
     }
     Ok(Some(retained.unwrap_or(Value::Null)))
 }
-pub(crate) fn interpret_ci_documents<'a>(
-    reader: impl Fn() -> Result<&'a facts::Reader, String>,
+pub(crate) fn interpret_ci_documents<'a, R: HistoricalGit + ?Sized + 'a>(
+    reader: impl Fn() -> Result<&'a R, String>,
     root: &Path,
     base: &str,
     candidate_oid: &str,

@@ -56,7 +56,7 @@ impl<'a> InstalledGit<'a> {
             Some(&request.base.commit),
             &request.candidate.commit,
             &request.config_path,
-            &request.observations,
+            Some(!request.observations["git_facts"].is_null()),
             None,
             json!({"mode":"request","request":request}),
         )
@@ -73,9 +73,25 @@ impl<'a> InstalledGit<'a> {
             base,
             candidate,
             config,
-            observations,
+            Some(!observations["git_facts"].is_null()),
             Some(root),
             json!({"mode":"observed","config":config,"base":base,"candidate":candidate,"observations":observations}),
+        )
+    }
+    pub(crate) fn configured(
+        root: &'a Path,
+        base: &'a str,
+        candidate: &'a str,
+        config: &'a str,
+    ) -> Result<Self> {
+        Self::start(
+            root,
+            Some(base),
+            candidate,
+            config,
+            None,
+            Some(root),
+            json!({"mode":"config","config":config,"base":base,"candidate":candidate}),
         )
     }
     fn start(
@@ -83,7 +99,7 @@ impl<'a> InstalledGit<'a> {
         base: Option<&'a str>,
         candidate: &'a str,
         config: &'a str,
-        observations: &Value,
+        expected_bound: Option<bool>,
         cwd: Option<&Path>,
         opening: Value,
     ) -> Result<Self> {
@@ -94,7 +110,7 @@ impl<'a> InstalledGit<'a> {
             bound: bool,
         }
         let open: Open = stream.exchange(&opening)?;
-        if open.bound == observations["git_facts"].is_null() {
+        if expected_bound.is_some_and(|expected| expected != open.bound) {
             return Err("E_GIT_FACTS: session binding differs from request".into());
         }
         Ok(Self {

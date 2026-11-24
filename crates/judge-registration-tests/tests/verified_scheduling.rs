@@ -4,10 +4,10 @@
 #[path = "../../judge-registration/src/verified_scheduling.rs"]
 mod policy;
 #[cfg(not(verus_keep_ghost))]
-use chrono_harness::verus;
-#[cfg(not(verus_keep_ghost))]
 use chrono_judge_registration::verified_scheduling as policy;
 use std::collections::{BTreeMap, BTreeSet};
+#[cfg(not(verus_keep_ghost))]
+use vstd::prelude::verus;
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
 

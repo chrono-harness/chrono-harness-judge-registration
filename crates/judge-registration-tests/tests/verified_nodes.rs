@@ -4,9 +4,9 @@
 #[path = "../../judge-registration/src/verified_nodes.rs"]
 mod policy;
 #[cfg(not(verus_keep_ghost))]
-use chrono_harness::verus;
-#[cfg(not(verus_keep_ghost))]
 use chrono_judge_registration::verified_nodes as policy;
+#[cfg(not(verus_keep_ghost))]
+use vstd::prelude::verus;
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
 

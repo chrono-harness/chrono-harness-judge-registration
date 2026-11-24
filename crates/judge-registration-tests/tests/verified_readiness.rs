@@ -3,7 +3,7 @@
 #[path = "../../judge-registration/src/verified_readiness.rs"]
 mod readiness;
 #[cfg(not(verus_keep_ghost))]
-use chrono_harness::verus;
+use vstd::prelude::verus;
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
 

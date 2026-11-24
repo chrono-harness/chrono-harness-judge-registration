@@ -2,10 +2,11 @@
 #[cfg(verus_keep_ghost)]
 use super::source_verifier::sources::{self as source_policy, continuity as source_continuity};
 #[cfg(not(verus_keep_ghost))]
-use chrono_harness::{
-    verified_verifier::sources::{self as source_policy, continuity as source_continuity},
-    verus,
+use chrono_harness::verified_verifier::sources::{
+    self as source_policy, continuity as source_continuity,
 };
+#[cfg(not(verus_keep_ghost))]
+use vstd::prelude::verus;
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
 
