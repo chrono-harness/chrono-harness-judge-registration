@@ -1,5 +1,9 @@
 //! Initial inventory checks share reference policy without inventing prior history.
-use crate::{Registrations, Result, issue};
+use crate::{
+    Registrations, Result,
+    historical_git::{HistoricalGit, InstalledGit},
+    issue,
+};
 use chrono_harness::{
     facts,
     initial::{Profile, Request},
@@ -11,36 +15,34 @@ use std::fs;
 
 pub fn judge(req: &Request) -> Response {
     let mut response = req.response(Status::Pass);
-    let reader = req.validate().and_then(|()| {
-        facts::Reader::from_observations(
+    let result = req.validate().and_then(|()| {
+        let reader = InstalledGit::observed(
             &req.candidate.root,
-            &req.config_path,
+            None,
             &req.candidate.commit,
+            &req.config_path,
             &req.observations,
-        )
+        )?;
+        let result = evaluate(req, &mut response, &reader);
+        let recorded = reader.record(&mut response);
+        result.and(recorded)
     });
-    let result = reader
-        .as_ref()
-        .map_err(Clone::clone)
-        .and_then(|reader| evaluate(req, &mut response, reader));
-    if let Ok(reader) = &reader {
-        reader.record(&mut response);
-    }
     if let Err(e) = result {
         issue(&mut response, "E_INITIAL_INPUT", e, "/request", true);
     }
     response
 }
 
-fn evaluate(req: &Request, response: &mut Response, reader: &facts::Reader) -> Result<()> {
+fn evaluate(req: &Request, response: &mut Response, reader: &InstalledGit) -> Result<()> {
     req.validate()?;
     let root = &req.candidate.root;
-    let actual =
-        fs::canonicalize(facts::utf8(reader.git(root, &["rev-parse", "--show-toplevel"])?)?.trim())
-            .map_err(|e| e.to_string())?;
+    let actual: std::path::PathBuf = reader.query(json!({"op":"checkout-root"}))?;
     if actual != *root
-        || reader.verify_oid(root, &req.candidate.commit)? != req.candidate.tree
-        || !reader.parents(root, &req.candidate.commit)?.is_empty()
+        || reader.query::<String>(json!({"op":"verify-tree","endpoint":"candidate"}))?
+            != req.candidate.tree
+        || !reader
+            .query::<Vec<String>>(json!({"op":"parents","commit":req.candidate.commit}))?
+            .is_empty()
     {
         return Err("initial requires the actual checkout root and a parentless candidate".into());
     }
@@ -74,7 +76,7 @@ fn evaluate(req: &Request, response: &mut Response, reader: &facts::Reader) -> R
     {
         return Err("initial binding differs from actual registration executable".into());
     }
-    let snapshot = reader.registry_snapshot(root, &req.candidate.commit, &req.config_path)?;
+    let snapshot = reader.snapshot("candidate")?;
     let values = snapshot.values;
     if wire::digest(&values)? != req.registry_digest {
         return Err("initial registry digest mismatch".into());
@@ -146,7 +148,11 @@ fn evaluate(req: &Request, response: &mut Response, reader: &facts::Reader) -> R
     {
         return Err("initial inventory rejects unsupported index flags".into());
     }
-    let tree = reader.tree(root, &req.candidate.commit)?;
+    let inventory = reader.inventory()?;
+    if inventory.delta.is_some() {
+        return Err("initial inventory returned a baseline".into());
+    }
+    let tree = inventory.entries;
     if tree
         .values()
         .any(|e| e.kind != "blob" || !matches!(e.mode.as_str(), "100644" | "100755" | "120000"))

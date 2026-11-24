@@ -23,6 +23,8 @@ pub mod project_views;
 #[cfg(not(verus_keep_ghost))]
 mod registrations;
 #[cfg(not(verus_keep_ghost))]
+mod runner_session;
+#[cfg(not(verus_keep_ghost))]
 pub use registrations::check_documents;
 #[cfg(not(verus_keep_ghost))]
 pub mod ci_transition;
@@ -219,26 +221,26 @@ fn outside_artifacts(artifacts: &[&str], paths: &[String]) -> Vec<String> {
 #[cfg(not(verus_keep_ghost))]
 pub fn judge(req: &Request) -> Response {
     let mut r = req.response(Status::Pass);
-    let reader = facts::Reader::for_request(req);
-    let result = reader
-        .as_ref()
-        .map_err(Clone::clone)
-        .and_then(|reader| evaluate(req, &mut r, reader));
-    if let Ok(reader) = &reader {
-        reader.record(&mut r);
-    }
+    let result = historical_git::InstalledGit::open(req).and_then(|reader| {
+        let result = evaluate(req, &mut r, &reader);
+        let recorded = reader.record(&mut r);
+        result.and(recorded)
+    });
     if let Err(e) = result {
         issue(&mut r, "E_INPUT", e, "/request", true);
     }
     r
 }
 #[cfg(not(verus_keep_ghost))]
-fn evaluate(req: &Request, r: &mut Response, reader: &facts::Reader) -> Result<()> {
+fn evaluate(
+    req: &Request,
+    r: &mut Response,
+    reader: &historical_git::InstalledGit<'_>,
+) -> Result<()> {
+    use historical_git::HistoricalGit;
     req.validate()?;
     let root = &req.candidate.root;
-    let actual_root =
-        fs::canonicalize(facts::utf8(reader.git(root, &["rev-parse", "--show-toplevel"])?)?.trim())
-            .map_err(|e| e.to_string())?;
+    let actual_root: std::path::PathBuf = reader.query(value!({"op":"checkout-root"}))?;
     if actual_root != *root {
         issue(
             r,
@@ -249,8 +251,9 @@ fn evaluate(req: &Request, r: &mut Response, reader: &facts::Reader) -> Result<(
         );
         return Ok(());
     }
-    if reader.verify_oid(root, &req.base.commit)? != req.base.tree
-        || reader.verify_oid(root, &req.candidate.commit)? != req.candidate.tree
+    if reader.query::<String>(value!({"op":"verify-tree","endpoint":"base"}))? != req.base.tree
+        || reader.query::<String>(value!({"op":"verify-tree","endpoint":"candidate"}))?
+            != req.candidate.tree
     {
         issue(
             r,
@@ -261,9 +264,9 @@ fn evaluate(req: &Request, r: &mut Response, reader: &facts::Reader) -> Result<(
         );
         return Ok(());
     }
-    let bt = reader.tree(root, &req.base.commit)?;
-    let ct = reader.tree(root, &req.candidate.commit)?;
-    if req.delta != facts::delta(&bt, &ct) {
+    let inventory = reader.inventory()?;
+    let ct = inventory.entries;
+    if inventory.delta.as_ref() != Some(&req.delta) {
         issue(
             r,
             "E_IDENTITY",
@@ -274,12 +277,11 @@ fn evaluate(req: &Request, r: &mut Response, reader: &facts::Reader) -> Result<(
         return Ok(());
     }
     // Newly written state artifacts may differ since acquisition; compare all governed dirt below.
-    let base_snapshot = reader.registry_snapshot(root, &req.base.commit, &req.config_path)?;
-    let bv = base_snapshot.values;
-    let candidate_snapshot =
-        reader.registry_snapshot(root, &req.candidate.commit, &req.config_path)?;
-    let cv = candidate_snapshot.values;
-    let candidate_identity = facts::registry_identity(&cv, &req.config_path)?;
+    let base_snapshot = reader.snapshot("base")?;
+    let bv = &base_snapshot.values;
+    let candidate_snapshot = reader.snapshot("candidate")?;
+    let cv = &candidate_snapshot.values;
+    let candidate_identity = facts::registry_identity(cv, &req.config_path)?;
     let selector_required =
         base_snapshot.selection.is_some() || candidate_snapshot.selection.is_some();
     let binding = req.observations["registry_bindings"].clone();
@@ -310,7 +312,7 @@ fn evaluate(req: &Request, r: &mut Response, reader: &facts::Reader) -> Result<(
                 .ok_or("missing effective candidate config")?,
         )?,
     )?;
-    if facts::registry_digest(&bv, &cv)? != req.registries.digest
+    if facts::registry_digest(bv, cv)? != req.registries.digest
         || req.registries.base != req.base.root.join(".chrono-harness")
         || req.registries.candidate != root.join(".chrono-harness")
     {
@@ -405,7 +407,9 @@ fn evaluate(req: &Request, r: &mut Response, reader: &facts::Reader) -> Result<(
         return Err("context v2 requires integration/delivery run_kind".into());
     }
     schema::string(&context["branch_ref"])?;
-    reader.verify_oid(root, schema::string(&context["fork_point"])?)?;
+    reader.query::<String>(
+        value!({"op":"verify-commit","commit":schema::string(&context["fork_point"])?}),
+    )?;
     for k in ["branch_started_at", "observed_at"] {
         let dt = time::OffsetDateTime::parse(
             schema::string(&context[k])?,
@@ -423,7 +427,15 @@ fn evaluate(req: &Request, r: &mut Response, reader: &facts::Reader) -> Result<(
     {
         return Err("invalid integration evidence digest".into());
     }
-    let (old, new, view) = match views_with_reader(req, reader) {
+    let views = transition::views_from_snapshots(
+        req,
+        base_snapshot,
+        candidate_snapshot,
+        None,
+        || Ok(reader),
+        true,
+    );
+    let (old, new, view) = match views {
         Ok(v) => v,
         Err(e) => {
             issue(r, "E_SCHEMA", e, "/registries", true);
@@ -764,13 +776,13 @@ pub(crate) fn input_closure_findings(n: &Registrations) -> Vec<Finding> {
 
 #[cfg(not(verus_keep_ghost))]
 fn references(
-    reader: &facts::Reader,
+    reader: &impl historical_git::HistoricalGit,
     root: &Path,
     candidate: &str,
     old: Option<&Registrations>,
     new: &Registrations,
     changes: &[wire::Delta],
-    ct: &facts::Tree,
+    ct: &BTreeMap<String, historical_git::Entry>,
     r: &mut Response,
 ) -> Result<()> {
     let initial = old.is_none();

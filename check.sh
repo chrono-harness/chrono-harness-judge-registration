@@ -17,6 +17,7 @@ export CHRONO_TEST_GIT CHRONO_TEST_GIT_PROFILE_BIN
 # Build scripts and the compiler keep their normal environment.
 mkdir "$scratch/test-bin"
 ln -s "$CHRONO_TEST_GIT" "$scratch/test-bin/git"
+ln -s "$CARGO_TARGET_DIR/debug/chrono-harness-test-cli" "$scratch/test-bin/chrono-harness"
 test_runner=$(jq -cn --arg path "PATH=$scratch/test-bin:$PATH" '["/usr/bin/env", $path]')
 cargo test --locked --manifest-path crates/judge-registration-tests/Cargo.toml --config "target.'cfg(all())'.runner=$test_runner"
 

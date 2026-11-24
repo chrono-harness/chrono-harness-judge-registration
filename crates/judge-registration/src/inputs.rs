@@ -4,7 +4,7 @@ use super::schema;
 use crate::Registrations;
 #[cfg(not(verus_keep_ghost))]
 use chrono_harness::{
-    facts, file_identity, no_symlink_parents, relative_path, sha256,
+    facts, file_identity, relative_path, sha256,
     wire::{self, Request},
 };
 #[cfg(not(verus_keep_ghost))]
@@ -203,23 +203,70 @@ pub fn snapshot_shape(value: &Value) -> Result<(), String> {
 }
 
 #[cfg(not(verus_keep_ghost))]
-fn retained_identity(root: &Path, value: &Value) -> Result<Option<(String, u64)>, String> {
-    match retained_shape(value)? {
-        Retained::Absent => Ok(None),
-        Retained::Bytes(bytes) => Ok(Some((sha256(&bytes), bytes.len() as u64))),
-        Retained::Blob {
-            path,
-            digest,
-            length,
-        } => {
-            let _input = chrono_harness::retained_artifacts::retention::read_guard(root, path)
-                .map_err(|e| format!("E_INPUT_BLOB: {e}"))?;
-            let path = no_symlink_parents(root, path).map_err(|e| format!("E_INPUT_BLOB: {e}"))?;
-            let observed = file_identity(&path).map_err(|e| format!("E_INPUT_BLOB: {e}"))?;
-            if observed != (digest.into(), length) {
-                return Err("E_INPUT_BLOB: retained content identity mismatch".into());
+struct RetainedInputs<'a> {
+    root: &'a Path,
+    session: Option<crate::runner_session::Stream>,
+}
+
+#[cfg(not(verus_keep_ghost))]
+impl RetainedInputs<'_> {
+    fn session(&mut self) -> Result<&mut crate::runner_session::Stream, String> {
+        if self.session.is_none() {
+            self.session = Some(crate::runner_session::Stream::start(
+                "retained-artifacts-v1",
+                Some(self.root),
+            )?);
+        }
+        Ok(self.session.as_mut().unwrap())
+    }
+
+    fn file(&mut self, path: &str) -> Result<(String, u64), String> {
+        let session = self.session()?;
+        session.exchange::<()>(&json!({"operation":"retain-read","path":path}))?;
+        let file: std::path::PathBuf =
+            session.exchange(&json!({"operation":"checked-path","path":path}))?;
+        file_identity(&file)
+    }
+
+    fn identity(
+        &mut self,
+        value: &Value,
+        originals: Option<(&Value, Option<&chrono_harness::prepared::ArtifactTransport>)>,
+    ) -> Result<Option<(String, u64)>, String> {
+        match retained_shape(value)? {
+            Retained::Absent => Ok(None),
+            Retained::Bytes(bytes) => Ok(Some((sha256(&bytes), bytes.len() as u64))),
+            Retained::Blob {
+                path,
+                digest,
+                length,
+            } => {
+                let observed = if let Some((artifacts, transport)) = originals {
+                    #[derive(serde::Deserialize)]
+                    struct Identity {
+                        sha256: String,
+                        length: u64,
+                    }
+                    let entry = artifacts
+                        .get(path)
+                        .ok_or_else(|| format!("missing original artifact {path}"))?;
+                    let identity: Identity = self.session()?.exchange(&json!({
+                        "operation":"artifact-identity", "path":path, "artifacts":{(path):entry}, "transport":transport,
+                    }))?;
+                    (identity.sha256, identity.length)
+                } else {
+                    self.file(path).map_err(|e| format!("E_INPUT_BLOB: {e}"))?
+                };
+                if observed.0 != digest || observed.1 != length {
+                    return Err(if originals.is_some() {
+                        "E_INPUT_BLOB: original input differs"
+                    } else {
+                        "E_INPUT_BLOB: retained content identity mismatch"
+                    }
+                    .into());
+                }
+                Ok(Some(observed))
             }
-            Ok(Some(observed))
         }
     }
 }
@@ -564,6 +611,28 @@ fn validate_inner(
     )>,
     live: bool,
 ) -> Result<Value, String> {
+    let mut store = RetainedInputs {
+        root: artifacts.map_or(req.candidate.root.as_path(), |(_, root, _)| root),
+        session: None,
+    };
+    let originals = artifacts.map(|(map, _, transport)| (map, transport));
+    let result = validate_endpoints(req, old, new, originals, live, &mut store);
+    if let Some(mut session) = store.session {
+        let closed = session.finish();
+        return result.and_then(|value| closed.map(|()| value));
+    }
+    result
+}
+
+#[cfg(not(verus_keep_ghost))]
+fn validate_endpoints(
+    req: &Request,
+    old: &Registrations,
+    new: &Registrations,
+    originals: Option<(&Value, Option<&chrono_harness::prepared::ArtifactTransport>)>,
+    live: bool,
+    store: &mut RetainedInputs<'_>,
+) -> Result<Value, String> {
     if new.filemap()["schema_version"] == 1
         && old.config()["schema_version"] == 1
         && new.config()["schema_version"] == 1
@@ -659,26 +728,9 @@ fn validate_inner(
             let value = retained["files"]
                 .get(id)
                 .ok_or_else(|| format!("{name}: missing retained input {id}"))?;
-            let identity = (|| match (artifacts, retained_shape(value)?) {
-                (
-                    Some((artifacts, root, transport)),
-                    Retained::Blob {
-                        path,
-                        digest,
-                        length,
-                    },
-                ) => {
-                    let identity = chrono_harness::retained_artifacts::identity(
-                        root, artifacts, path, transport,
-                    )?;
-                    if identity != (digest.to_owned(), length) {
-                        return Err("E_INPUT_BLOB: original input differs".into());
-                    }
-                    Ok(Some((digest.to_owned(), length)))
-                }
-                _ => retained_identity(&req.candidate.root, value),
-            })()
-            .map_err(|e| format!("{name}: retained input {id}: {e}"))?;
+            let identity = store
+                .identity(value, originals)
+                .map_err(|e| format!("{name}: retained input {id}: {e}"))?;
             match &identity {
                 None if matches!(cfg["schema_version"].as_u64(), Some(2 | 3 | 4))
                     && input["presence"] == "absent" => {}

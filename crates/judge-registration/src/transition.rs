@@ -1,5 +1,8 @@
 //! Finite candidate-owned decoders for explicitly named historical profiles.
-use crate::{Registrations, execution, historical_git::HistoricalGit};
+use crate::{
+    Registrations, execution,
+    historical_git::{HistoricalGit, InstalledGit},
+};
 use chrono_harness::{
     CommandSpec, facts, json,
     observation::{self, Tool},
@@ -66,8 +69,7 @@ pub(crate) fn load_view(
     Ok((old, Registrations::load(&b, config)?))
 }
 pub fn views(req: &Request) -> Result<(Registrations, Registrations, Value), String> {
-    let reader = facts::Reader::for_request(req)?;
-    views_with_reader(req, &reader)
+    InstalledGit::with_request(req, |reader| installed_views(req, reader, None)).0
 }
 fn view_binding(
     req: &Request,
@@ -128,6 +130,20 @@ pub fn views_with_reader(
 ) -> Result<(Registrations, Registrations, Value), String> {
     views_using_reports(req, reader, None)
 }
+pub(crate) fn installed_views(
+    request: &Request,
+    reader: &InstalledGit<'_>,
+    reports: Option<&dyn Fn(&[String]) -> Result<chrono_harness::units::FullManifest, String>>,
+) -> Result<(Registrations, Registrations, Value), String> {
+    views_from_snapshots(
+        request,
+        reader.snapshot("base")?,
+        reader.snapshot("candidate")?,
+        reports,
+        || Ok(reader),
+        true,
+    )
+}
 /// Resolve the same sealed request as an in-process registration consumer.
 pub fn filemap_views(req: &Request) -> Value {
     endpoint_reply(req, |endpoint| endpoint.filemap_view())
@@ -147,19 +163,16 @@ pub fn classification_views(req: &Request) -> Value {
 }
 
 fn endpoint_reply(req: &Request, project: impl Fn(&Registrations) -> Value) -> Value {
-    let reader = match facts::Reader::for_request(req) {
-        Ok(reader) => reader,
-        Err(error) => return value!({"request_id":req.request_id,"error":error}),
-    };
-    let mut reply = match views_with_reader(req, &reader) {
-        Ok((old, current, _)) => value!({
-            "request_id":req.request_id,
-            "base":project(&old), "candidate":project(&current),
-        }),
-        Err(error) => value!({"request_id":req.request_id,"error":error}),
-    };
-    if reader.is_bound() {
-        reply["git_facts"] = reader.observation();
+    let (result, observation) = InstalledGit::with_request(req, |reader| {
+        let (old, current, _) = installed_views(req, reader, None)?;
+        Ok(
+            value!({ "request_id":req.request_id, "base":project(&old), "candidate":project(&current) }),
+        )
+    });
+    let mut reply =
+        result.unwrap_or_else(|error| value!({"request_id":req.request_id,"error":error}));
+    if let Some(observation) = observation {
+        reply["git_facts"] = observation;
     }
     reply
 }

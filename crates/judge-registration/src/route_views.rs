@@ -1,5 +1,5 @@
 //! Registration-owned inputs for the route planner's native judge protocol.
-use crate::{Registrations, execution, facts, inputs, transition};
+use crate::{Registrations, execution, historical_git::InstalledGit, inputs, transition};
 use chrono_harness::{units::Scope, wire::Request};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -12,19 +12,16 @@ pub(crate) fn endpoint(r: &Registrations) -> Value {
 /// Interpret the actual fixed commits once, retaining the producing Git reader on errors too.
 pub fn views(input: impl Read) -> Result<Value, String> {
     let request: Request = serde_json::from_reader(input).map_err(|e| e.to_string())?;
-    let reader = facts::Reader::for_request(&request);
-    let result = reader.as_ref().map_err(Clone::clone).and_then(|reader| {
-        let (old, current, view) = transition::views_with_reader(&request, reader)?;
+    let (result, observation) = InstalledGit::with_request(&request, |reader| {
+        let (old, current, view) = transition::installed_views(&request, reader, None)?;
         Ok(json!({"base":endpoint(&old),"candidate":endpoint(&current),
             "methods":execution::methods(current.projects()),"plans":execution::plans(current.filemap()),
             "scheduling":execution::scheduling(current.filemap(),current.projects(),&current.config()["artifacts"]),
             "test_operations":current.test_operations(),"reused":transition::reused_tools(&view),"registration_view":view}))
     });
     let mut reply = json!({"request_id":request.request_id,"commits":[request.base.commit,request.candidate.commit],"result":result});
-    if let Ok(reader) = reader
-        && reader.is_bound()
-    {
-        reply["git_facts"] = reader.observation();
+    if let Some(observation) = observation {
+        reply["git_facts"] = observation;
     }
     Ok(reply)
 }
