@@ -4,11 +4,11 @@
 
 验证项目登记、执行方法与消费合同。
 
-使用 `cargo build --locked --manifest-path crates/judge-registration/Cargo.toml` 构建。按根目录 AGENTS.md 安装本仓工具后，运行 `mise exec -- ./check.sh` 检查格式、构建、原生测试及以下证明。
+使用 `cargo build --locked --manifest-path crates/judge-registration/Cargo.toml` 构建。按根目录 AGENTS.md 安装本仓工具后，运行 `./check.sh` 按当前 Git 变更执行登记的原生检查与证明。
 
 ## 登记决策的证明范围
 
-`check.sh` 是操作名、根文件及编译源的执行登记。每一次检查都在独立临时目录中运行 Verus 0.2026.04.24.f8e1704，采用整 crate 模式，禁用 cheating 和默认 external，输出原始 JSON、编译库及带 SHA-256 的 dep-info。全部操作结束后，bootstrap 按操作名、根、实际命令和文件摘要收取原报告。原生检查读取给产品 CLI 构建的 Cargo 库及其 dep-info。下表中的操作名均以 `verify.registration-` 开头。
+本仓的 [projects.json](.chrono-harness/projects.json) 登记 11 个 Verus 操作的根、编译参数和版本， [FILEMAP.json](.chrono-harness/FILEMAP.json) 登记变更会选中哪些证明和原生用例。PR 和 dev push 的汇总读取实际执行单元的原始报告。原生检查核对产品 CLI 构建产出的 dep-info，使用独立的 registration-fixture Rust 测试数据和已发布的 Git 替身运行登记判官。下表中的操作名均以 `verify.registration-` 开头。
 
 | 操作 | 产品使用位置和业务条件 | 根所检查的边界 |
 | --- | --- | --- |
@@ -24,7 +24,7 @@
 | `snapshot-records-tests` | `inputs::retained_shape` 把 JSON 字段交给 `parse_retained`，解析器调用字节解码或返回原错误 | 缺失与未知字段的先后，absent、bytes、blob 分支，路径、摘要、长度和解码调用次数 |
 | `reference-syntax-tests` | `schema::validate_reference_syntax` 解码声明，向 runner 查询路径判定，再调用前后缀与 base 检查 | 独立前后缀、base、空串及路径判定组合；原生适配器检查输入路径和 250/251 条边界 |
 
-机器证明作用于表内根的 Verus 模型。原生测试另行检查 JSON 适配、实际调用和错误传播。Git 及 runner 的进程接口在这些测试中使用协议替身。调用正确性还依赖 Cargo/rustc 与 Verus 的真实输出、所选二进制、文件系统对该临时目录的隔离，以及摘要比较。检查完成时清理临时目录，CI 日志保留各操作通过收取的原报告。
+机器证明作用于表内根的 Verus 模型。原生测试另行检查 JSON 适配、实际调用和错误传播。Git 及 runner 的进程接口在这些测试中使用协议替身。调用正确性还依赖 Cargo/rustc 与 Verus 的真实输出、所选二进制、文件系统对该临时目录的隔离，以及摘要比较。检查完成后清理临时构建目录，GitHub 原件保留一天。
 
 
 登记判官的构建、测试和证明只读取本仓源码与锁定的第三方依赖。安装本仓发行后，`execution-methods` 和 `test-owners` 可直接处理 stdin。宿主执行完整登记检查时，通过 PATH 提供 mise 清单固定的 runner 与 routes。runner 通过 `record-command-v1` 返回解码器和分类选择器的原始进程记录，routes 通过 `check-unit-assignments-v1` 校验执行单元。启用滚动日志的宿主同时安装 diagnostics。
