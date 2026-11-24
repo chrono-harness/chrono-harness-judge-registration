@@ -11,6 +11,33 @@ use std::{
 use tempfile::TempDir;
 
 #[test]
+fn git_metadata_cannot_be_registered_as_a_host_file_or_external_input() {
+    use chrono_judge_registration::Registrations;
+    for (path, accepted) in [
+        (".git/", false),
+        ("nested/.GiT/", false),
+        (".github/", true),
+        (".git-cache/", true),
+    ] {
+        let mut values = support::values();
+        values.get_mut(support::CONFIG).unwrap()["artifacts"][0]["path"] = json!(path);
+        assert_eq!(
+            Registrations::load(&values, support::CONFIG).is_ok(),
+            accepted,
+            "{path}"
+        );
+    }
+    for path in [".git/HEAD", "/external/checkout/.GIT/HEAD"] {
+        let mut values = support::values();
+        let config = values.get_mut(support::CONFIG).unwrap();
+        config["environment"]["inputs"] =
+            json!([{"id":"external","location":path,"sha256":"a".repeat(64)}]);
+        let error = Registrations::load(&values, support::CONFIG).err().unwrap();
+        assert!(error.contains("Git metadata"), "{path}: {error}");
+    }
+}
+
+#[test]
 fn execution_report_registration_preserves_path_boundaries() {
     use chrono_judge_registration::Registrations;
     let mut values = support::values();

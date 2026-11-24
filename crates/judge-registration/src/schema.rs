@@ -56,8 +56,19 @@ pub fn validate_reference_syntax(declaration: &Value) -> Result {
 #[cfg(not(verus_keep_ghost))]
 use crate::wire;
 #[cfg(not(verus_keep_ghost))]
+fn outside_git_metadata(input: &std::path::Path) -> std::result::Result<(), String> {
+    for component in input.components() {
+        if component.as_os_str().eq_ignore_ascii_case(".git") {
+            return Err(format!("protected Git metadata path: {}", input.display()));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(verus_keep_ghost))]
 pub(crate) fn relative_path(path: &str) -> std::result::Result<(), String> {
     use std::path::{Component, Path};
+    outside_git_metadata(Path::new(path))?;
     if path.is_empty()
         || path.contains(['\0', '\n', '\r', '\\'])
         || Path::new(path)
@@ -404,7 +415,9 @@ pub fn config(v: &Value) -> Result {
             hash(&i["sha256"])?;
         }
         let s = string(&i["location"])?;
-        if !std::path::Path::new(s).is_absolute() {
+        if std::path::Path::new(s).is_absolute() {
+            outside_git_metadata(std::path::Path::new(s))?;
+        } else {
             path(&i["location"])?;
         }
     }
