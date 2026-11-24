@@ -90,6 +90,57 @@ pub fn observe_file(path: &Path) -> Result<Option<(String, u64)>, String> {
     }
 }
 
+/// An installed program can be kept outside the checkout while its declared input
+/// remains relative. Only a selected tool's pinned final file may be a link.
+#[cfg(not(verus_keep_ghost))]
+fn installed_input(
+    root: &Path,
+    config: &Value,
+    input: &Value,
+) -> Result<Option<(std::path::PathBuf, (String, u64))>, String> {
+    let location = input["location"].as_str().ok_or("input location missing")?;
+    let path = Path::new(location);
+    let Some(expected) = input["sha256"]
+        .as_str()
+        .filter(|digest| wire::is_digest(digest))
+    else {
+        return Ok(None);
+    };
+    if input["presence"] != "present"
+        || path.parent() != Some(Path::new(".chrono-harness/bin"))
+        || !config["tools"]
+            .as_array()
+            .is_some_and(|tools| tools.iter().any(|tool| tool["program"] == location))
+    {
+        return Ok(None);
+    }
+    relative_path(location)?;
+    let directory = checked_path(root, ".chrono-harness/bin")?;
+    let link = directory.join(path.file_name().ok_or("missing installed input name")?);
+    match std::fs::symlink_metadata(&link) {
+        Ok(metadata) if metadata.is_symlink() => {}
+        Ok(_) => return Ok(None),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("E_INPUT_PATH: {location}: {error}")),
+    }
+    let target = std::fs::canonicalize(&link)
+        .map_err(|error| format!("E_INPUT_PATH: {location}: {error}"))?;
+    let checkout = std::fs::canonicalize(root).map_err(|error| error.to_string())?;
+    if target.starts_with(checkout) {
+        return Err(format!(
+            "E_INPUT_PATH: installed tool input points inside checkout: {location}"
+        ));
+    }
+    let identity = observe_file(&target)?
+        .ok_or_else(|| format!("missing installed tool input: {location}"))?;
+    if identity.0 != expected {
+        return Err(format!(
+            "E_INPUT_IDENTITY: installed tool input digest differs: {location}"
+        ));
+    }
+    Ok(Some((target, identity)))
+}
+
 /// Report the registration policy needed to collect inputs at a fixed endpoint.
 #[cfg(not(verus_keep_ghost))]
 pub fn input_profile(input: impl std::io::Read) -> Result<Value, String> {
@@ -119,6 +170,12 @@ pub fn input_profile(input: impl std::io::Read) -> Result<Value, String> {
 /// Project the registration-owned part of a capture from the caller's fixed documents.
 #[cfg(not(verus_keep_ghost))]
 pub fn capture_plan(input: impl std::io::Read) -> Result<Value, String> {
+    let root = std::env::current_dir().map_err(|error| error.to_string())?;
+    capture_plan_at(input, &root)
+}
+
+#[cfg(not(verus_keep_ghost))]
+pub fn capture_plan_at(input: impl std::io::Read, root: &Path) -> Result<Value, String> {
     #[derive(serde::Deserialize)]
     #[serde(deny_unknown_fields)]
     struct Query {
@@ -130,12 +187,30 @@ pub fn capture_plan(input: impl std::io::Read) -> Result<Value, String> {
     let query: Query = serde_json::from_reader(input).map_err(|error| error.to_string())?;
     let endpoint = Registrations::load(&query.documents, &query.config)?;
     let scope = query.unit.map(|unit| crate::wire::Scope::Unit { unit });
-    Ok(serde_json::json!({
+    let required = required_files(&endpoint, scope.as_ref())?;
+    let mut installed_paths = BTreeMap::new();
+    for declaration in endpoint.config()["environment"]["inputs"]
+        .as_array()
+        .ok_or("missing inputs")?
+    {
+        let id = declaration["id"].as_str().ok_or("missing input ID")?;
+        if required.contains(id) {
+            if let Some((path, _)) = installed_input(root, endpoint.config(), declaration)? {
+                installed_paths.insert(id, path);
+            }
+        }
+    }
+    let mut plan = serde_json::json!({
         "effective_config": endpoint.effective_config_path(),
         "selection": endpoint.selection(),
         "schema": snapshot_schema_for(&endpoint),
-        "required": required_files(&endpoint, scope.as_ref())?,
-    }))
+        "required": required,
+    });
+    if !installed_paths.is_empty() {
+        plan["installed_paths"] =
+            serde_json::to_value(installed_paths).map_err(|error| error.to_string())?;
+    }
+    Ok(plan)
 }
 
 #[path = "verified_snapshot_header.rs"]
@@ -807,11 +882,14 @@ fn validate_endpoints(
                 } else {
                     req.candidate.root.join(path)
                 };
-                let actual = if matches!(cfg["schema_version"].as_u64(), Some(2 | 3 | 4)) {
-                    observe_file(&path)
-                } else {
-                    file_identity(&path).map(Some)
-                };
+                let actual =
+                    if let Some((_, image)) = installed_input(&req.candidate.root, cfg, input)? {
+                        Ok(Some(image))
+                    } else if matches!(cfg["schema_version"].as_u64(), Some(2 | 3 | 4)) {
+                        observe_file(&path)
+                    } else {
+                        file_identity(&path).map(Some)
+                    };
                 if actual.map_err(|e| format!("candidate input {id}: {e}"))? != identity {
                     return Err(format!("candidate input changed: {id}"));
                 }

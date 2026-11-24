@@ -1593,6 +1593,56 @@ fn classification_view_projects_changed_surfaces_and_interpreted_documents() {
     assert_eq!(view["documents"], json!({support::FM:registry.filemap()}));
 }
 
+#[cfg(unix)]
+#[test]
+fn capture_plan_resolves_only_pinned_external_program_inputs() {
+    use sha2::{Digest, Sha256};
+    use std::os::unix::fs::symlink;
+
+    let host = tempfile::tempdir().unwrap();
+    let external = tempfile::tempdir().unwrap();
+    let bin = host.path().join(".chrono-harness/bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let external_file = external.path().join("demo");
+    let body = b"released demo bytes";
+    let hash = format!("{:x}", Sha256::digest(body));
+    std::fs::write(&external_file, body).unwrap();
+    let location = ".chrono-harness/bin/demo";
+    let link = bin.join("demo");
+    symlink(&external_file, &link).unwrap();
+
+    let mut documents = support::values();
+    let cfg = documents.get_mut(support::CONFIG).unwrap();
+    cfg["schema_version"] = json!(2);
+    cfg["tools"] = json!([{"id":"demo","program":location,"resolution":"PATH-once",
+        "version_argv":["--version"],"expected_version":"demo v1"}]);
+    cfg["environment"]["inputs"] = json!([{"id":"image","location":location,
+        "sha256":hash,"presence":"present"}]);
+    let mut q = json!({"config":support::CONFIG,"documents":documents,"unit":null});
+    let collect = |q: &Value| {
+        chrono_judge_registration::inputs::capture_plan_at(q.to_string().as_bytes(), host.path())
+    };
+    assert_eq!(
+        collect(&q).unwrap()["installed_paths"]["image"],
+        json!(std::fs::canonicalize(&external_file).unwrap())
+    );
+    std::fs::write(&external_file, b"different").unwrap();
+    assert!(collect(&q).unwrap_err().contains("digest differs"));
+    std::fs::write(&external_file, body).unwrap();
+    std::fs::remove_file(&link).unwrap();
+    std::fs::write(host.path().join("unrelated"), body).unwrap();
+    symlink(host.path().join("unrelated"), &link).unwrap();
+    assert!(collect(&q).unwrap_err().contains("inside checkout"));
+    std::fs::remove_file(&link).unwrap();
+    std::fs::write(&link, body).unwrap();
+    assert!(collect(&q).unwrap().get("installed_paths").is_none());
+    std::fs::remove_file(&link).unwrap();
+    symlink(&external_file, &link).unwrap();
+    q["documents"][support::CONFIG]["tools"][0]["program"] = json!("other");
+    assert!(collect(&q).unwrap().get("installed_paths").is_none());
+    assert!(chrono_judge_registration::inputs::observe_file(&link).is_err());
+}
+
 #[test]
 fn capture_plan_binds_the_input_set_and_rejects_unregistered_units() {
     let mut values = support::values();
