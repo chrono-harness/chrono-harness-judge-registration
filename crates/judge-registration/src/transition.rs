@@ -1,12 +1,11 @@
 //! Finite candidate-owned decoders for explicitly named historical profiles.
 use crate::facts;
+use crate::runner_session;
+use crate::wire::json;
+use crate::wire::sha256;
 use crate::wire::{self, Request};
 use crate::{Registrations, execution, historical_git::InstalledGit};
-use chrono_harness::{
-    CommandSpec, json,
-    observation::{self, Tool},
-    run_process_observed, sha256,
-};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json as value};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -14,6 +13,34 @@ use std::{
     path::Path,
 };
 type Values = BTreeMap<String, Value>;
+/// Fields registration checks against the fixed migration declaration. The runner
+/// retains ownership of the rest of the record, including original launch evidence.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Process {
+    pub(crate) exit_code: i32,
+    pub(crate) failure: Option<String>,
+    executable: std::path::PathBuf,
+    sha256: String,
+    cwd: std::path::PathBuf,
+    argv: Vec<String>,
+    environment: BTreeMap<String, String>,
+    stdin_sha256: String,
+    pub(crate) stdout_bytes: Vec<u8>,
+    stdout_sha256: String,
+    stdout: String,
+    pub(crate) stderr: String,
+    #[serde(flatten)]
+    original: BTreeMap<String, Value>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Tool {
+    program: String,
+    path: std::path::PathBuf,
+    basename: String,
+    sha256: String,
+    version: Process,
+}
+
 enum Conversion<'a> {
     Original(&'a Value),
     Acquire(&'a dyn Fn(&Registrations, &Value) -> Result<Option<Value>, String>),
@@ -313,7 +340,7 @@ fn read_retained_conversion(
                 "operation":"read-bounded-text", "path":manifest_path,
                 "limit":limits["manifest_bytes"].as_u64().ok_or("manifest bound")?
             }))?;
-            chrono_harness::decode(text.as_bytes())?
+            crate::wire::decode(text.as_bytes())?
         }
     };
     if !matches!(
@@ -579,10 +606,11 @@ fn interpret_mode<'a>(
     let script_bytes = reader.blob(root, candidate_oid, script_path)?;
     let (tool, receipt) = if let Some(c) = retained {
         let tool: Tool = serde_json::from_value(c["tool"].clone()).map_err(|e| e.to_string())?;
-        let receipt: chrono_harness::ProcessResult =
+        let receipt: Process =
             serde_json::from_value(c["process"].clone()).map_err(|e| e.to_string())?;
-        observation::process_success(&tool.version)?;
-        observation::process_success(&receipt)?;
+        for process in [&tool.version, &receipt] {
+            wire::evidence::<()>(value!({"operation":"check-process","process":process}))?;
+        }
         let mut version_argv = vec![tool.path.to_str().ok_or("migration tool path")?.to_owned()];
         version_argv.extend(argv.clone());
         let mut invocation = vec![tool.path.to_str().ok_or("migration tool path")?.to_owned()];
@@ -642,13 +670,12 @@ fn interpret_mode<'a>(
     } else {
         let artifacts = facts::artifact_directories(new.config())?;
         let before = reader.checkout_excluding(root, candidate_oid, &artifacts)?;
-        let tool = observation::tool(
-            root,
-            t["program"].as_str().unwrap(),
-            &argv,
-            env,
-            30,
-            1048576,
+        let tool: Tool = runner_session::query(
+            "chrono-harness",
+            "observed-tool-v1",
+            Some(root),
+            &value!({"root":root,"program":t["program"],"version_argv":argv,"environment":env,
+                "timeout_seconds":30,"output_limit_bytes":1048576}),
         )?;
         if tool.version.exit_code != 0
             || tool.version.failure.is_some()
@@ -662,14 +689,16 @@ fn interpret_mode<'a>(
         if fs::read(root.join(script_path)).map_err(|e| e.to_string())? != script_bytes {
             return Err("E_MIGRATION: decoder differs from fixed candidate".into());
         }
-        let spec = CommandSpec {
-            program: tool.path.to_str().unwrap().into(),
-            args: method.argv.clone(),
-            env: env.clone(),
-            timeout_seconds: 30,
-            output_limit_bytes: 16 * 1024 * 1024,
-        };
-        let receipt = run_process_observed(root, &spec, &wire::canonical(&input)?, &tool.sha256)?;
+        let receipt: Process = runner_session::record(
+            root,
+            tool.path.to_str().ok_or("migration tool path")?,
+            &method.argv,
+            env,
+            30,
+            16 * 1024 * 1024,
+            &tool.sha256,
+            &wire::canonical(&input)?,
+        )?;
         if receipt.exit_code != 0 || receipt.failure.is_some() {
             return Err(format!(
                 "E_MIGRATION: exit {}: {}",

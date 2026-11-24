@@ -8,6 +8,25 @@ use std::{collections::BTreeMap, path::PathBuf};
 pub const PROTOCOL: &str = "chrono-judge/v1";
 pub const INITIAL_PROTOCOL: &str = "chrono-initial-judge/v1";
 
+pub fn json(bytes: &[u8]) -> Result<Value, String> {
+    let text = std::str::from_utf8(bytes).map_err(|e| e.to_string())?;
+    boundary_compiler::canonicalizer::parse_with_dup_check(text).map_err(|error| match error {
+        boundary_compiler::JcsError::DuplicateKey { key } => format!("duplicate JSON member {key}"),
+        boundary_compiler::JcsError::InvalidJson { reason } => reason,
+        other => other.to_string(),
+    })
+}
+
+pub fn decode<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, String> {
+    serde_json::from_value(json(bytes)?).map_err(|e| e.to_string())
+}
+
+/// Retain the exact source of an embedded document until duplicate checking.
+pub(crate) fn strict_value<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Value, D::Error> {
+    let raw = Box::<serde_json::value::RawValue>::deserialize(d)?;
+    json(raw.get().as_bytes()).map_err(serde::de::Error::custom)
+}
+
 pub fn canonical<T: Serialize>(value: &T) -> Result<Vec<u8>, String> {
     serde_jcs::to_vec(value).map_err(|e| e.to_string())
 }
@@ -50,6 +69,17 @@ pub struct Delta {
 pub struct IndexFlag {
     pub path: String,
     pub tag: String,
+}
+
+impl IndexFlag {
+    pub(crate) fn hides_changes(&self) -> bool {
+        self.tag == "S"
+            || self
+                .tag
+                .as_bytes()
+                .first()
+                .is_some_and(u8::is_ascii_lowercase)
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

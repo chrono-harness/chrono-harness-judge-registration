@@ -92,6 +92,15 @@ pub(crate) fn query<T: DeserializeOwned>(
     request: &impl Serialize,
 ) -> Result<T> {
     let bytes = serde_json::to_vec(request).map_err(|e| e.to_string())?;
+    query_bytes(program, operation, cwd, &bytes)
+}
+
+fn query_bytes<T: DeserializeOwned>(
+    program: &str,
+    operation: &str,
+    cwd: Option<&Path>,
+    bytes: &[u8],
+) -> Result<T> {
     let mut command = Command::new(program);
     if let Some(root) = cwd {
         command.current_dir(root);
@@ -105,7 +114,7 @@ pub(crate) fn query<T: DeserializeOwned>(
         .map_err(|error| format!("start {program} {operation}: {error}"))?;
     let mut stdin = child.stdin.take().unwrap();
     let (output, written) = std::thread::scope(|scope| {
-        let writer = scope.spawn(move || stdin.write_all(&bytes));
+        let writer = scope.spawn(move || stdin.write_all(bytes));
         let output = child.wait_with_output();
         (output, writer.join().expect("JSON input writer panicked"))
     });
@@ -120,4 +129,23 @@ pub(crate) fn query<T: DeserializeOwned>(
     }
     written.map_err(|error| error.to_string())?;
     serde_json::from_slice(&output.stdout).map_err(|e| format!("{program} {operation}: {e}"))
+}
+
+/// Ask the runner which launched the child for the complete original receipt.
+pub(crate) fn record<T: DeserializeOwned>(
+    root: &Path,
+    program: &str,
+    args: &[String],
+    env: &std::collections::BTreeMap<String, String>,
+    timeout_seconds: u64,
+    output_limit_bytes: usize,
+    digest: &str,
+    input: &[u8],
+) -> Result<T> {
+    let header = serde_json::json!({"program":program,"args":args,"env":env,
+        "timeout_seconds":timeout_seconds,"output_limit_bytes":output_limit_bytes,"expected_sha256":digest});
+    let mut bytes = serde_json::to_vec(&header).map_err(|e| e.to_string())?;
+    bytes.push(b'\n');
+    bytes.extend_from_slice(input);
+    query_bytes("chrono-harness", "record-command-v1", Some(root), &bytes)
 }

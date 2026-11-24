@@ -66,9 +66,13 @@ pub use verified_nodes::NodeKind;
 pub mod initial;
 mod schema;
 #[cfg(not(verus_keep_ghost))]
-use crate::wire::{Finding, Request, Response, Status};
+use crate::inputs::checked_path;
 #[cfg(not(verus_keep_ghost))]
-use chrono_harness::{json, no_symlink_parents, sha256};
+use crate::wire::json;
+#[cfg(not(verus_keep_ghost))]
+use crate::wire::sha256;
+#[cfg(not(verus_keep_ghost))]
+use crate::wire::{Finding, Request, Response, Status};
 #[cfg(not(verus_keep_ghost))]
 pub use registrations::{NodeDefinition, NodeView, Registrations};
 #[cfg(not(verus_keep_ghost))]
@@ -135,7 +139,7 @@ pub fn query_configuration_edges(input: impl std::io::Read) -> std::result::Resu
     #[derive(serde::Deserialize)]
     #[serde(deny_unknown_fields)]
     struct Query {
-        #[serde(deserialize_with = "chrono_harness::strict_json_value")]
+        #[serde(deserialize_with = "crate::wire::strict_value")]
         filemap: Value,
         effective_config: Option<String>,
     }
@@ -311,7 +315,7 @@ fn evaluate(
         return Ok(());
     }
     for (p, original) in &base_snapshot.bytes {
-        let p = no_symlink_parents(&req.base.root, p)?;
+        let p = checked_path(&req.base.root, p)?;
         if fs::read(&p).map_err(|e| e.to_string())? != *original {
             issue(
                 r,
@@ -324,7 +328,7 @@ fn evaluate(
         }
     }
     for (p, original) in &candidate_snapshot.bytes {
-        let disk = fs::read(no_symlink_parents(root, p)?).map_err(|e| e.to_string())?;
+        let disk = fs::read(checked_path(root, p)?).map_err(|e| e.to_string())?;
         if &disk != original {
             issue(
                 r,
@@ -459,7 +463,7 @@ fn evaluate(
         );
     }
     for flag in &observed.index_flags {
-        if chrono_harness::verified_status::unsupported_index_flag(&flag.tag).is_some() {
+        if flag.hides_changes() {
             issue(
                 r,
                 "E_INPUT_UNSUPPORTED",
@@ -583,7 +587,7 @@ fn readiness(
         );
     }
     for j in n.judges["judges"].as_array().unwrap() {
-        let path = no_symlink_parents(root, j["executable"].as_str().unwrap())?;
+        let path = checked_path(root, j["executable"].as_str().unwrap())?;
         if j["sha256"].is_null()
             || fs::read(&path).ok().map(|v| sha256(&v)).as_deref() != j["sha256"].as_str()
         {

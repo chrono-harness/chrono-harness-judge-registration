@@ -5,9 +5,11 @@ use crate::Registrations;
 #[cfg(not(verus_keep_ghost))]
 use crate::facts;
 #[cfg(not(verus_keep_ghost))]
-use crate::wire::{self, Request};
+use crate::schema::relative_path;
 #[cfg(not(verus_keep_ghost))]
-use chrono_harness::{file_identity, relative_path, sha256};
+use crate::wire::sha256;
+#[cfg(not(verus_keep_ghost))]
+use crate::wire::{self, Request};
 #[cfg(not(verus_keep_ghost))]
 use serde_json::{Value, json};
 #[cfg(not(verus_keep_ghost))]
@@ -26,7 +28,67 @@ pub fn snapshot_schema_for(r: &Registrations) -> &'static str {
 }
 
 #[cfg(not(verus_keep_ghost))]
-pub use chrono_harness::input_file::observe_file;
+pub(crate) fn file_identity(path: &Path) -> Result<(String, u64), String> {
+    use sha2::{Digest, Sha256};
+    let regular = |metadata: std::fs::Metadata| {
+        if metadata.is_file() {
+            Ok(())
+        } else {
+            Err(format!("not a regular input file: {}", path.display()))
+        }
+    };
+    let io_error = |e: std::io::Error| format!("{}: {e}", path.display());
+    regular(path.metadata().map_err(io_error)?)?;
+    let mut input = std::fs::File::open(path).map_err(io_error)?;
+    regular(input.metadata().map_err(io_error)?)?;
+    let mut hash = Sha256::new();
+    let size = std::io::copy(&mut input, &mut hash).map_err(io_error)?;
+    Ok((format!("{:x}", hash.finalize()), size))
+}
+
+#[cfg(not(verus_keep_ghost))]
+pub(crate) fn checked_path(root: &Path, path: &str) -> Result<std::path::PathBuf, String> {
+    relative_path(path)?;
+    let mut prefix = root.to_path_buf();
+    for part in Path::new(path).components() {
+        prefix.push(part);
+        reject_link(&prefix)?;
+    }
+    Ok(prefix)
+}
+
+#[cfg(not(verus_keep_ghost))]
+fn reject_link(path: &Path) -> Result<bool, String> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_symlink() => {
+            Err(format!("E_INPUT_PATH: symlink input: {}", path.display()))
+        }
+        Ok(_) => Ok(true),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(format!("E_INPUT_PATH: {}: {e}", path.display())),
+    }
+}
+
+#[cfg(not(verus_keep_ghost))]
+pub fn observe_file(path: &Path) -> Result<Option<(String, u64)>, String> {
+    use std::path::Component;
+    let mut prefix = std::path::PathBuf::new();
+    for part in path.components() {
+        if matches!(part, Component::CurDir | Component::ParentDir) {
+            return Err(format!(
+                "E_INPUT_PATH: non-normal input path: {}",
+                path.display()
+            ));
+        }
+        prefix.push(part);
+        reject_link(&prefix)?;
+    }
+    if reject_link(path)? {
+        file_identity(path).map(Some)
+    } else {
+        Ok(None)
+    }
+}
 
 /// Report the registration policy needed to collect inputs at a fixed endpoint.
 #[cfg(not(verus_keep_ghost))]

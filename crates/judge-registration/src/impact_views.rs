@@ -59,7 +59,7 @@ pub(crate) fn snapshot(
     let values: BTreeMap<_, _> = documents
         .iter()
         .map(|(path, original)| {
-            Ok::<_, String>((path.clone(), chrono_harness::json(original.as_bytes())?))
+            Ok::<_, String>((path.clone(), crate::wire::json(original.as_bytes())?))
         })
         .collect::<Result<_, _>>()?;
     let identity = facts::registry_identity(&values, config)

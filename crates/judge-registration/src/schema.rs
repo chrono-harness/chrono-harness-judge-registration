@@ -56,7 +56,18 @@ pub fn validate_reference_syntax(declaration: &Value) -> Result {
 #[cfg(not(verus_keep_ghost))]
 use crate::wire;
 #[cfg(not(verus_keep_ghost))]
-use chrono_harness::relative_path;
+pub(crate) fn relative_path(path: &str) -> std::result::Result<(), String> {
+    use std::path::{Component, Path};
+    if path.is_empty()
+        || path.contains(['\0', '\n', '\r', '\\'])
+        || Path::new(path)
+            .components()
+            .any(|part| !matches!(part, Component::Normal(_)))
+    {
+        return Err(format!("invalid relative path: {path:?}"));
+    }
+    Ok(())
+}
 #[cfg(not(verus_keep_ghost))]
 use serde_json::{Map, Value};
 #[cfg(not(verus_keep_ghost))]
@@ -133,8 +144,10 @@ pub(crate) fn path(v: &Value) -> Result {
 #[cfg(not(verus_keep_ghost))]
 pub(crate) fn state_path(v: &Value, context: &str) -> Result {
     let p = string(v)?;
-    if !chrono_harness::verified_paths::valid_host_state_path(p.as_bytes()) {
-        relative_path(p)?;
+    relative_path(p)?;
+    if p.strip_prefix(".chrono-harness/state/")
+        .is_none_or(str::is_empty)
+    {
         return Err(context.into());
     }
     canonical_path(p)

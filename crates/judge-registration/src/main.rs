@@ -12,10 +12,10 @@ fn read_request() -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
-fn run(args: &[String]) -> u8 {
+fn run(args: &[String]) -> Result<u8, String> {
     if args == ["--version"] {
         println!("chrono-judge-registration {}", env!("CARGO_PKG_VERSION"));
-        return 0;
+        return Ok(0);
     }
     let initial = args
         == [
@@ -23,48 +23,114 @@ fn run(args: &[String]) -> u8 {
             chrono_judge_registration::wire::INITIAL_PROTOCOL,
         ];
     if !initial && args != ["--protocol", "chrono-judge/v1"] {
-        chrono_harness::log_cli_error(&format!(
-            "E_USAGE: execution-methods, test-owners or --protocol chrono-judge/v1 or chrono-initial-judge/v1"
-        ));
-        eprintln!(
-            "E_USAGE: execution-methods, test-owners or --protocol chrono-judge/v1 or chrono-initial-judge/v1"
-        );
-        return 2;
+        return Err("E_USAGE: execution-methods, test-owners or --protocol chrono-judge/v1 or chrono-initial-judge/v1".into());
     }
-    let bytes = match read_request() {
-        Ok(bytes) => bytes,
-        Err(error) => {
-            chrono_harness::log_cli_error(&error);
-            eprintln!("{error}");
-            return 2;
-        }
-    };
+    let bytes = read_request()?;
     let decoded = if initial {
-        chrono_harness::decode(&bytes).map(|r| chrono_judge_registration::initial::judge(&r))
+        chrono_judge_registration::wire::decode(&bytes)
+            .map(|r| chrono_judge_registration::initial::judge(&r))
     } else {
-        chrono_harness::decode(&bytes).map(|r| chrono_judge_registration::judge(&r))
+        chrono_judge_registration::wire::decode(&bytes)
+            .map(|r| chrono_judge_registration::judge(&r))
     };
-    let response = match decoded {
-        Ok(r) => r,
-        Err(e) => {
-            chrono_harness::log_cli_error(&format!("E_PROTOCOL: {e}"));
-            eprintln!("E_PROTOCOL: {e}");
-            return 2;
-        }
+    let response = decoded.map_err(|e| format!("E_PROTOCOL: {e}"))?;
+    let bytes = chrono_judge_registration::wire::canonical(&response)
+        .map_err(|e| format!("E_PROTOCOL: {e}"))?;
+    std::io::stdout()
+        .write_all(&bytes)
+        .map_err(|e| e.to_string())?;
+    Ok(response.status.exit_code() as u8)
+}
+
+fn protocol_cli() -> Result<u8, String> {
+    use serde_json::{Value, json};
+    use std::{
+        io::{BufRead, BufReader},
+        path::PathBuf,
+        process::{Command, Stdio},
     };
-    match chrono_judge_registration::wire::canonical(&response) {
-        Ok(bytes) => {
-            if std::io::stdout().write_all(&bytes).is_err() {
-                return 2;
-            }
-        }
-        Err(e) => {
-            chrono_harness::log_cli_error(&format!("E_PROTOCOL: {e}"));
-            eprintln!("E_PROTOCOL: {e}");
-            return 2;
+
+    let argv: Vec<_> = std::env::args_os().collect();
+    let args = argv
+        .iter()
+        .enumerate()
+        .map(|(index, arg)| {
+            arg.to_str()
+                .map(str::to_owned)
+                .ok_or((index, arg.as_encoded_bytes()))
+        })
+        .collect::<Result<Vec<_>, _>>();
+    let root = argv
+        .iter()
+        .skip(1)
+        .zip(argv.iter().skip(2))
+        .find(|(key, _)| *key == "--host-root")
+        .map(|(_, value)| PathBuf::from(value))
+        .map(Ok)
+        .unwrap_or_else(std::env::current_dir)
+        .map_err(|e| e.to_string())?;
+    let policy = root.join(".chrono-harness/logging.json");
+    if let Ok(args) = &args {
+        if policy
+            .symlink_metadata()
+            .is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound)
+        {
+            return run(&args[1..]);
         }
     }
-    response.status.exit_code() as u8
+    let operation = argv.get(1).and_then(|arg| arg.to_str()).unwrap_or("");
+    let mut child = Command::new("chrono-diagnostics")
+        .arg("cli-events-v1")
+        .arg(&root)
+        .args(["chrono-judge-registration", operation])
+        .arg(std::process::id().to_string())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("chrono-diagnostics: {e}"))?;
+    let mut channel = child.stdin.take().unwrap();
+    let mut reply = BufReader::new(child.stdout.take().unwrap());
+    let business = (|| -> Result<u8, String> {
+        let mut line = String::new();
+        reply.read_line(&mut line).map_err(|e| e.to_string())?;
+        if serde_json::from_str::<Value>(&line).map_err(|e| e.to_string())? != json!({"ready":true})
+        {
+            return Err("chrono-diagnostics: invalid ready reply".into());
+        }
+        let mut send = |event: Value| -> Result<(), String> {
+            serde_json::to_writer(&mut channel, &event).map_err(|e| e.to_string())?;
+            channel
+                .write_all(b"\n")
+                .and_then(|()| channel.flush())
+                .map_err(|e| e.to_string())
+        };
+        let exit = match args {
+            Err((index, bytes)) => {
+                send(json!({"invalid_argument":{"argv_index":index,"bytes":bytes}}))?;
+                2
+            }
+            Ok(args) => match run(&args[1..]) {
+                Ok(exit) => exit,
+                Err(message) => {
+                    eprintln!("{message}");
+                    send(json!({"diagnostic":message}))?;
+                    2
+                }
+            },
+        };
+        send(json!({"exit_code":exit}))?;
+        Ok(exit)
+    })();
+    drop(channel);
+    let result = child.wait().map_err(|e| e.to_string())?;
+    let exit = business?;
+    if result.code() == Some(i32::from(exit)) || result.code() == Some(2) {
+        Ok(result.code().unwrap() as u8)
+    } else {
+        Err(format!(
+            "chrono-diagnostics exited {result} after business exit {exit}"
+        ))
+    }
 }
 
 fn main() -> std::process::ExitCode {
@@ -77,7 +143,7 @@ fn main() -> std::process::ExitCode {
             let selector = argument
                 .filter(|_| args.next().is_none())
                 .ok_or("E_USAGE: classification-inputs-v1 SELECTOR")?;
-            let request = chrono_harness::decode(&read_request()?)?;
+            let request = chrono_judge_registration::wire::decode(&read_request()?)?;
             let output = chrono_judge_registration::classification_inputs::query(
                 &request,
                 std::path::Path::new(&selector),
@@ -213,7 +279,7 @@ fn main() -> std::process::ExitCode {
                     }
                     Some("test-owners") => ExecutionView::TestOwners.write(&bytes, &mut out)?,
                     _ => {
-                        let request = chrono_harness::decode(&bytes)?;
+                        let request = chrono_judge_registration::wire::decode(&bytes)?;
                         let views = if operation == Some("classification-views-v1") {
                             chrono_judge_registration::classification_views(&request)
                         } else {
@@ -234,8 +300,10 @@ fn main() -> std::process::ExitCode {
             };
         }
     }
-    std::process::ExitCode::from(chrono_harness::logged_text_main(
-        "chrono-judge-registration",
-        run,
-    ))
+    protocol_cli()
+        .unwrap_or_else(|message| {
+            eprintln!("{message}");
+            2
+        })
+        .into()
 }
