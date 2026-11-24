@@ -2431,3 +2431,38 @@ fn checked_documents_return_the_admitted_policy_and_reject_a_missing_registry() 
     documents.remove(support::WORKFLOW);
     assert_eq!(check(&documents).unwrap_err(), "missing registry bytes");
 }
+
+#[test]
+fn registration_passes_source_declarations_and_optional_contracts_to_the_installed_owner() {
+    let mut filemap = support::values().remove(support::FM).unwrap();
+    let file = json!({"path":"declaration.rs","owner":"host","surface":"product","cost":"unknown","edges":[],
+        "verification":{"role":"data","roots":[]}});
+    filemap["files"].as_array_mut().unwrap().push(file);
+    let custody = |filemap: &Value| {
+        let request = json!({"operation":"custody-filemap","filemap":filemap});
+        chrono_judge_registration::worktree::query(request.to_string().as_bytes())
+    };
+    assert!(custody(&filemap).is_ok());
+    filemap["files"].as_array_mut().unwrap().last_mut().unwrap()["verification"]["role"] =
+        json!("program");
+    assert!(
+        custody(&filemap)
+            .unwrap_err()
+            .contains("declaration.rs: source declaration rejected by fixture")
+    );
+
+    let mut projects = support::values().remove(support::PROJECTS).unwrap();
+    let contract = json!({"version":"fixture","commit":"valid"});
+    projects["projects"][0]["actions"]["execute"]["output_contract"] = contract.clone();
+    let methods = chrono_judge_registration::execution::methods(&projects).unwrap();
+    assert_eq!(
+        methods["execute.p"][0].output_contract.as_ref(),
+        Some(&contract)
+    );
+    projects["projects"][0]["actions"]["execute"]["output_contract"]["commit"] = json!("");
+    assert!(
+        chrono_judge_registration::execution::methods(&projects)
+            .unwrap_err()
+            .contains("output contract rejected by fixture")
+    );
+}

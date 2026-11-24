@@ -207,9 +207,63 @@ fn retained_session() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn compiler_fixture() -> Result<(), Box<dyn std::error::Error>> {
+    let query: Value = serde_json::from_reader(std::io::stdin().lock())?;
+    let reply = match query["operation"].as_str() {
+        Some("source-declarations")
+            if query["files"] == json!([]) && query["operations"] == json!([]) =>
+        {
+            let paths = query["reference_paths"]
+                .as_array()
+                .ok_or("missing reference paths")?;
+            let values = paths
+                .iter()
+                .map(|path| match path.as_str() {
+                    Some("x") => Ok(true),
+                    Some("./x") => Ok(false),
+                    _ => Err("unexpected reference fixture path"),
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            json!(values)
+        }
+        Some("source-declarations")
+            if query["operations"] == json!([]) && query["reference_paths"] == json!([]) =>
+        {
+            let files = &query["files"];
+            if files
+                == &json!([{"path":"declaration.rs","verification":{"role":"data","roots":[]}}])
+            {
+                json!([])
+            } else if files
+                == &json!([{"path":"declaration.rs","verification":{"role":"program","roots":[]}}])
+            {
+                return Err("declaration.rs: source declaration rejected by fixture".into());
+            } else {
+                return Err("unexpected source declaration fixture".into());
+            }
+        }
+        Some("validate-contract")
+            if query
+                == json!({"operation":"validate-contract","contract":{"version":"fixture","commit":"valid"}}) =>
+        {
+            Value::Null
+        }
+        Some("validate-contract")
+            if query
+                == json!({"operation":"validate-contract","contract":{"version":"fixture","commit":""}}) =>
+        {
+            return Err("output contract rejected by fixture".into());
+        }
+        _ => return Err(format!("unexpected compiler fixture request: {query}").into()),
+    };
+    serde_json::to_writer(std::io::stdout().lock(), &reply)?;
+    Ok(())
+}
+
 fn main() -> ExitCode {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let result = match args.as_slice() {
+        [op] if op == "compiler-output-v1" => compiler_fixture(),
         [op] if op == "git-facts-v1" => facts_session(),
         [op] if op == "retained-artifacts-v1" => retained_session(),
         _ => return chrono_harness::cli_main(),
