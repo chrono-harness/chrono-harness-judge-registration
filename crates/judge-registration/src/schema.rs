@@ -528,6 +528,7 @@ pub(crate) fn project_bindings(
     unique(&v["projects"], Some("id"))?;
     unique(&v["scripts"], Some("id"))?;
     for p in array(&v["projects"])? {
+        let owner = |error: String| format!("project {}: {error}", p["id"]);
         object(
             p,
             if languages {
@@ -543,10 +544,11 @@ pub(crate) fn project_bindings(
                 "root",
                 "test_groups",
             ],
-        )?;
+        )
+        .map_err(owner)?;
         choice(&p["kind"], &["production", "test"])?;
         if languages {
-            string(&p["language"]).map_err(|e| format!("project language: {e}"))?;
+            string(&p["language"]).map_err(|e| owner(format!("language: {e}")))?;
         }
         if p.get("test_project").is_some() == p.get("tests_for").is_some() {
             return Err("project requires exactly test_project or tests_for".into());
@@ -566,6 +568,7 @@ pub(crate) fn project_bindings(
         )?;
     }
     for s in array(&v["scripts"])? {
+        let owner = |error: String| format!("script {} at {}: {error}", s["id"], s["path"]);
         object(
             s,
             if languages {
@@ -574,9 +577,10 @@ pub(crate) fn project_bindings(
                 &["id", "path", "actions"]
             },
             &["test_script", "tests_for"],
-        )?;
+        )
+        .map_err(owner)?;
         if languages {
-            string(&s["language"]).map_err(|e| format!("script language: {e}"))?;
+            string(&s["language"]).map_err(|e| owner(format!("language: {e}")))?;
         }
         path(&s["path"])?;
         actions(&s["actions"])?;
