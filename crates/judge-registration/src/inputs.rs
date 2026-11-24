@@ -96,6 +96,7 @@ pub fn input_profile(input: impl std::io::Read) -> Result<Value, String> {
     #[derive(serde::Deserialize)]
     #[serde(deny_unknown_fields)]
     struct Query {
+        #[serde(deserialize_with = "crate::wire::strict_value")]
         config: Value,
         inspect_execution_units: bool,
     }
@@ -122,6 +123,7 @@ pub fn capture_plan(input: impl std::io::Read) -> Result<Value, String> {
     #[serde(deny_unknown_fields)]
     struct Query {
         config: String,
+        #[serde(deserialize_with = "crate::wire::strict_value")]
         documents: BTreeMap<String, Value>,
         unit: Option<String>,
     }

@@ -29,9 +29,13 @@ pub fn decode<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, String>
 }
 
 /// Retain the exact source of an embedded document until duplicate checking.
-pub(crate) fn strict_value<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Value, D::Error> {
+pub(crate) fn strict_value<'de, D, T>(d: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::de::DeserializeOwned,
+{
     let raw = Box::<serde_json::value::RawValue>::deserialize(d)?;
-    json(raw.get().as_bytes()).map_err(serde::de::Error::custom)
+    decode(raw.get().as_bytes()).map_err(serde::de::Error::custom)
 }
 
 pub fn canonical<T: Serialize>(value: &T) -> Result<Vec<u8>, String> {
