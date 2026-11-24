@@ -342,3 +342,31 @@ fn selected_snapshot_uses_v3_for_missing_known_and_boundary_versions() {
 }
 
 }
+
+#[cfg(not(verus_keep_ghost))]
+#[test]
+fn decoded_snapshot_applies_schema_and_selector_field_rules() {
+    use chrono_judge_registration::inputs::snapshot_shape;
+    use serde_json::json;
+
+    let mut snapshot = json!({
+        "schema": "chrono-input-snapshot/v2",
+        "commit": "1".repeat(40),
+        "config_path": "config.json",
+        "config_digest": "a".repeat(64),
+        "environment": {},
+        "files": {}
+    });
+    assert_eq!(snapshot_shape(&snapshot), Ok(()));
+
+    snapshot["effective_config_path"] = json!(null);
+    assert_eq!(
+        snapshot_shape(&snapshot).unwrap_err(),
+        "E_INPUT_SNAPSHOT: selection binding requires snapshot v3"
+    );
+    snapshot["schema"] = json!("chrono-input-snapshot/v4");
+    assert_eq!(
+        snapshot_shape(&snapshot).unwrap_err(),
+        "E_INPUT_SNAPSHOT: unsupported snapshot schema"
+    );
+}

@@ -4,7 +4,28 @@
 
 验证项目登记、执行方法与消费合同。
 
-使用 `cargo build --locked --manifest-path crates/judge-registration/Cargo.toml` 构建。安装 Verus 0.2026.04.24.f8e1704，运行 `VERUS=/path/to/verus ./check.sh` 检查格式、构建、测试及证明。
+使用 `cargo build --locked --manifest-path crates/judge-registration/Cargo.toml` 构建。按根目录 AGENTS.md 安装本仓工具后，运行 `mise exec -- ./check.sh` 检查格式、构建、原生测试及以下证明。
+
+## 登记决策的证明范围
+
+`check.sh` 是操作名、根文件及编译源的执行登记。每一次检查都在独立临时目录中运行 Verus 0.2026.04.24.f8e1704，采用整 crate 模式，禁用 cheating 和默认 external，输出原始 JSON、编译库及带 SHA-256 的 dep-info。全部操作结束后，bootstrap 按操作名、根、实际命令和文件摘要收取原报告。原生检查读取给产品 CLI 构建的 Cargo 库及其 dep-info。下表中的操作名均以 `verify.registration-` 开头。
+
+| 操作 | 产品使用位置和业务条件 | 根所检查的边界 |
+| --- | --- | --- |
+| `nodes` | `Registrations::node_data` 给文件、项目、脚本、输入、测试、判官、工具及环境赋予类型，计划收集按类型选取节点 | `NodeKind` 的 clone 保持原类型，相等关系等于类型身份 |
+| `nodes-tests` | 同一批生产类型在原生测试中来自产品库 | 独立枚举八种类型，两两比较并核对副本 |
+| `readiness` | `readiness` 检查登记状态和输入闭包，端点快照校验检查 commit | 只有精确 active、满足三项输入条件、具有所需端点绑定时通过相应判断 |
+| `readiness-tests` | 登记激活和端点输入 | 提议状态、未解决输入、缺失或错误端点、允许省略绑定的旧快照分别得到约定结果 |
+| `input-coverage` | `input_coverage::shape` 检查状态与绑定数，覆盖查验区分 absent 行 | bound/absent 需要绑定，not-applicable 和允许的 unresolved 不带绑定 |
+| `input-coverage-tests` | 输入闭包消费登记的 domain 行 | 输入状态、绑定数和闭包状态逐项变化时核对精确接受条件 |
+| `scheduling` | `execution::scheduling` 在执行前检查参与操作的 claims | 计划内每个操作都有显式声明，允许计划之外另有生产操作 |
+| `scheduling-tests` | 完整和不完整的执行计划 | 包含额外声明和缺一个声明得到不同结果 |
+| `snapshot-header-tests` | `inputs::snapshot_shape`、快照生产和读取共用头与选择器判定 | v1/v2/v3、未知 schema、选择器字段和链接、absent 表示、直接版本边界；JSON 入口区分字段为 null 和字段缺省 |
+| `snapshot-records-tests` | `inputs::retained_shape` 把 JSON 字段交给 `parse_retained`，解析器调用字节解码或返回原错误 | 缺失与未知字段的先后，absent、bytes、blob 分支，路径、摘要、长度和解码调用次数 |
+| `reference-syntax-tests` | `schema::validate_reference_syntax` 解码声明，向 runner 查询路径判定，再调用前后缀与 base 检查 | 独立前后缀、base、空串及路径判定组合；原生适配器检查输入路径和 250/251 条边界 |
+
+机器证明作用于表内根的 Verus 模型。原生测试另行检查 JSON 适配、实际调用和错误传播。Git 及 runner 的进程接口在这些测试中使用协议替身。调用正确性还依赖 Cargo/rustc 与 Verus 的真实输出、所选二进制、文件系统对该临时目录的隔离，以及摘要比较。检查完成时清理临时目录，CI 日志保留各操作通过收取的原报告。
+
 
 登记判官的构建、测试和证明只读取本仓源码与锁定的第三方依赖。安装本仓发行后，`execution-methods` 和 `test-owners` 可直接处理 stdin。宿主执行完整登记检查时，通过 PATH 提供 mise 清单固定的 runner 与 routes。runner 通过 `record-command-v1` 返回解码器和分类选择器的原始进程记录，routes 通过 `check-unit-assignments-v1` 校验执行单元。启用滚动日志的宿主同时安装 diagnostics。
 
