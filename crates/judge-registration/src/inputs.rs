@@ -218,9 +218,9 @@ mod header;
 #[cfg(verus_keep_ghost)]
 pub use header::snapshot_format_version;
 pub use header::{
-    Retained, SNAPSHOT_SCHEMA, SNAPSHOT_SCHEMA_V2, SNAPSHOT_SCHEMA_V3, admit_snapshot_header,
-    admit_snapshot_retained, admit_snapshot_selector_binding, select_snapshot_schema,
-    snapshot_uses_selector,
+    Retained, SNAPSHOT_SCHEMA, SNAPSHOT_SCHEMA_V2, SNAPSHOT_SCHEMA_V3,
+    admit_endpoint_snapshot_version, admit_snapshot_header, admit_snapshot_retained,
+    admit_snapshot_selector_binding, select_snapshot_schema, snapshot_uses_selector,
 };
 
 #[path = "verified_snapshot_records.rs"]
@@ -786,15 +786,12 @@ fn validate_endpoints(
         let cfg = r.config();
         let required = endpoint_required_files(name, old, new, req.scope.as_ref())?;
         let retained = &req.observations["retained"][name];
-        if matches!(cfg["schema_version"].as_u64(), Some(2 | 3 | 4))
-            && retained["schema"] != snapshot_schema_for(r)
-        {
-            return Err(if r.selection().is_some() {
-                format!("{name}: selected config requires snapshot v3")
-            } else {
-                format!("{name}: config v2 requires snapshot v2")
-            });
-        }
+        admit_endpoint_snapshot_version(
+            cfg["schema_version"].as_u64(),
+            r.selection().is_some(),
+            retained["schema"].as_str(),
+        )
+        .map_err(|message| format!("{name}: {message}"))?;
         if retained.get("schema").is_some() {
             snapshot_shape(retained)?;
             if retained["schema"] != snapshot_schema_for(r)

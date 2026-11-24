@@ -180,6 +180,25 @@ fn expect_snapshot_error(result: Result<(), &str>, expected: &str)
 }
 
 #[cfg_attr(not(verus_keep_ghost), test)]
+fn endpoint_version_accepts_matching_inputs_and_reports_the_selected_requirement() {
+    proof {
+        reveal_strlit("chrono-input-snapshot/v2"); reveal_strlit("chrono-input-snapshot/v3");
+        reveal_strlit("unknown");
+        assert("chrono-input-snapshot/v2"@[23] != "chrono-input-snapshot/v3"@[23]);
+        assert("unknown"@.len() != "chrono-input-snapshot/v2"@.len());
+    }
+    expect(policy::admit_endpoint_snapshot_version(None, false, None).is_ok());
+    expect(policy::admit_endpoint_snapshot_version(Some(1), true, None).is_ok());
+    expect(policy::admit_endpoint_snapshot_version(Some(5), false, None).is_ok());
+    expect(policy::admit_endpoint_snapshot_version(Some(2), false, Some("chrono-input-snapshot/v2")).is_ok());
+    expect(policy::admit_endpoint_snapshot_version(Some(3), true, Some("chrono-input-snapshot/v3")).is_ok());
+    expect_snapshot_error(policy::admit_endpoint_snapshot_version(Some(4), false, None), "config v2 requires snapshot v2");
+    expect_snapshot_error(policy::admit_endpoint_snapshot_version(Some(2), false, Some("unknown")), "config v2 requires snapshot v2");
+    expect_snapshot_error(policy::admit_endpoint_snapshot_version(Some(3), true, Some("chrono-input-snapshot/v2")), "selected config requires snapshot v3");
+    expect_snapshot_error(policy::admit_endpoint_snapshot_version(Some(4), false, Some("chrono-input-snapshot/v3")), "config v2 requires snapshot v2");
+}
+
+#[cfg_attr(not(verus_keep_ghost), test)]
 fn snapshot_header_accepts_only_the_three_complete_schemas() {
     snapshot_schema_literals_differ();
     let one = policy::admit_snapshot_header(Some("chrono-input-snapshot/v1"), false, false);
