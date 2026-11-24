@@ -187,13 +187,37 @@ fn retained_session() -> Result<(), Box<dyn std::error::Error>> {
     for frame in std::io::stdin().lock().lines() {
         let query: Value = serde_json::from_str(&frame?)?;
         let result = (|| {
-            let path = field(&query, "path")?;
+            let path = || field(&query, "path");
             match field(&query, "operation")? {
+                "read-bounded-text" => {
+                    let limit = query["limit"]
+                        .as_u64()
+                        .ok_or("missing fixture size limit")?;
+                    let text =
+                        std::fs::read_to_string(root.join(path()?)).map_err(|e| e.to_string())?;
+                    if text.len() as u64 > limit {
+                        return Err("fixture input exceeds collection limit".into());
+                    }
+                    Ok(Value::String(text))
+                }
+                "resolve-original" => {
+                    let original = field(&query["original"], "path")?;
+                    let relocated = if query["transport"].is_null() {
+                        original.to_owned()
+                    } else {
+                        let transport = &query["transport"];
+                        let suffix = original
+                            .strip_prefix(field(transport, "source_directory")?)
+                            .ok_or("fixture path outside source directory")?;
+                        format!("{}{suffix}", field(transport, "directory")?)
+                    };
+                    Ok(Value::String(relocated))
+                }
                 "retain-read" => {
-                    retention::read_guard(&root, path)?;
+                    retention::read_guard(&root, path()?)?;
                     Ok(Value::Null)
                 }
-                "checked-path" => Ok(json!(chrono_harness::no_symlink_parents(&root, path)?)),
+                "checked-path" => Ok(json!(chrono_harness::no_symlink_parents(&root, path()?)?)),
                 "artifact-identity" => {
                     let transport: Option<chrono_harness::prepared::ArtifactTransport> =
                         serde_json::from_value(query["transport"].clone())
@@ -201,7 +225,7 @@ fn retained_session() -> Result<(), Box<dyn std::error::Error>> {
                     let (sha256, length) = retained_artifacts::identity(
                         &root,
                         &query["artifacts"],
-                        path,
+                        path()?,
                         transport.as_ref(),
                     )?;
                     Ok(json!({"sha256":sha256,"length":length}))
@@ -214,10 +238,34 @@ fn retained_session() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn evidence_session() -> Result<(), Box<dyn std::error::Error>> {
+    let mut out = std::io::stdout().lock();
+    for frame in std::io::stdin().lock().lines() {
+        let query: Value = serde_json::from_str(&frame?)?;
+        let result = (|| {
+            if field(&query, "operation")? != "observe-record" {
+                return Err("unexpected fixture evidence operation".into());
+            }
+            let record = &query["record"];
+            let process = &record["process"];
+            if process["exit_code"] != 0 || !process["failure"].is_null() {
+                return Err("fixture process failed".into());
+            }
+            // This fixture writer serializes each response canonically.
+            let matches =
+                process["stdout_sha256"] == chrono_harness::wire::digest(&record["response"])?;
+            Ok(json!({"record":record, "stdout_matches":matches}))
+        })();
+        reply(&mut out, result)?;
+    }
+    Ok(())
+}
+
 fn main() -> ExitCode {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let result = match args.as_slice() {
         [op] if op == "git-facts-v1" => facts_session(),
+        [op] if op == "judge-evidence-v1" => evidence_session(),
         [op] if op == "retained-artifacts-v1" => retained_session(),
         _ => return chrono_harness::cli_main(),
     };

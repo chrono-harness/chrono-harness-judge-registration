@@ -292,16 +292,29 @@ fn retained_conversion(
     let Some(chrono_harness::units::Scope::Collect { manifest }) = &req.scope else {
         return Ok(None);
     };
+    crate::runner_session::Stream::with(
+        "retained-artifacts-v1",
+        Some(&req.candidate.root),
+        |originals| read_retained_conversion(req, r, reports, manifest, originals),
+    )
+}
+
+fn read_retained_conversion(
+    req: &Request,
+    r: &Registrations,
+    reports: Option<&chrono_harness::units::FullManifest>,
+    manifest_path: &str,
+    originals: &mut crate::runner_session::Stream,
+) -> Result<Option<Value>, String> {
     let limits = &r.config()["execution_units"]["collection_limits"];
-    let manifest: chrono_harness::units::FullManifest = match reports {
+    let manifest = match reports {
         Some(reports) => reports.clone(),
         None => {
-            let bytes = chrono_harness::units::read_bounded(
-                &req.candidate.root,
-                manifest,
-                limits["manifest_bytes"].as_u64().ok_or("manifest bound")?,
-            )?;
-            chrono_harness::decode(&bytes)?
+            let text: String = originals.exchange(&value!({
+                "operation":"read-bounded-text", "path":manifest_path,
+                "limit":limits["manifest_bytes"].as_u64().ok_or("manifest bound")?
+            }))?;
+            chrono_harness::decode(text.as_bytes())?
         }
     };
     if !matches!(
@@ -316,25 +329,21 @@ fn retained_conversion(
         let source = r.config()["execution_units"]["units"][&input.unit]["report_path"]
             .as_str()
             .ok_or("E_COLLECTION_INPUT: unregistered original unit")?;
-        let transported = chrono_harness::prepared::original_path(
-            &chrono_harness::prepared::Original {
-                path: source.into(),
-                sha256: input.sha256.clone(),
-            },
-            input.artifacts.as_ref(),
-        )?;
+        let transported: String = originals.exchange(&value!({
+            "operation":"resolve-original", "original":{"path":source, "sha256":input.sha256},
+            "transport":input.artifacts,
+        }))?;
         if !seen.insert(input.unit.clone()) || transported != input.path {
             return Err("E_COLLECTION_INPUT: original unit registration".into());
         }
-        let bytes = chrono_harness::units::read_bounded(
-            &req.candidate.root,
-            &input.path,
-            limits["report_bytes"].as_u64().ok_or("report bound")?,
-        )?;
-        if sha256(&bytes) != input.sha256 {
+        let text: String = originals.exchange(&value!({
+            "operation":"read-bounded-text", "path":input.path,
+            "limit":limits["report_bytes"].as_u64().ok_or("report bound")?
+        }))?;
+        if sha256(text.as_bytes()) != input.sha256 {
             return Err("E_COLLECTION_INPUT: original report digest".into());
         }
-        let report = json(&bytes)?;
+        let report = json(text.as_bytes())?;
         let record = report["judges"]
             .as_array()
             .ok_or("original judges")?
@@ -346,10 +355,25 @@ fn retained_conversion(
             let original: Request =
                 serde_json::from_value(report["request"].clone()).map_err(|e| e.to_string())?;
             original.validate()?;
-            let expanded = chrono_harness::full::expand_record(record)?;
-            let process: chrono_harness::ProcessResult =
-                serde_json::from_value(expanded["process"].clone()).map_err(|e| e.to_string())?;
-            observation::process_success(&process)?;
+            #[derive(serde::Deserialize)]
+            struct Observed {
+                record: ObservedRecord,
+                stdout_matches: bool,
+            }
+            #[derive(serde::Deserialize)]
+            struct ObservedRecord {
+                process: ProcessBinding,
+            }
+            #[derive(serde::Deserialize)]
+            struct ProcessBinding {
+                stdin_sha256: String,
+                sha256: String,
+            }
+            let observed: Observed =
+                crate::runner_session::Stream::with("judge-evidence-v1", None, |stream| {
+                    stream.exchange(&value!({"operation":"observe-record","record":record}))
+                })?;
+            let process = observed.record.process;
             if original.base.commit != req.base.commit
                 || original.base.tree != req.base.tree
                 || original.candidate.commit != req.candidate.commit
@@ -373,7 +397,7 @@ fn retained_conversion(
                         .ok_or("registration binding")?["sha256"]
                         .as_str()
                         .ok_or("registration pin")?
-                || json(&process.stdout_bytes)? != record["response"]
+                || !observed.stdout_matches
                 || c["process"]["cwd"] != serde_json::to_value(&original.candidate.root).unwrap()
             {
                 return Err("E_COLLECTION_INPUT: original conversion bootstrap binding".into());
