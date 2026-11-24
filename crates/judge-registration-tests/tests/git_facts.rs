@@ -126,24 +126,31 @@ fn required_candidate_snapshot_is_rejected_by_registration() {
     let path = ".chrono-harness/state/coverage-inputs.json";
     let mut pair: Value =
         serde_json::from_slice(&fs::read(h.host.root().join(path)).unwrap()).unwrap();
-    pair.as_object_mut().unwrap().remove("candidate");
-    write(h.host.root(), path, &pair);
-    let mut context = h.host.context();
-    context["retained_inputs"] = json!(path);
-    let (exit, response) = h.host.run_context(context);
-    assert_ne!(exit, 0, "{response}");
-    assert!(
-        response["findings"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|result| {
-                result["message"].as_str().is_some_and(|cause| {
-                    cause.contains("candidate: config v2 requires snapshot v2")
-                })
-            }),
-        "{response}"
-    );
+    let original = pair["candidate"].clone();
+    let mut wrong_version = original;
+    wrong_version["schema"] = json!("chrono-input-snapshot/v3");
+    for replacement in [None, Some(wrong_version)] {
+        if let Some(snapshot) = replacement {
+            pair["candidate"] = snapshot;
+        } else {
+            pair.as_object_mut().unwrap().remove("candidate");
+        }
+        write(h.host.root(), path, &pair);
+        let mut context = h.host.context();
+        context["retained_inputs"] = json!(path);
+        let (exit, response) = h.host.run_context(context);
+        assert_ne!(exit, 0, "{response}");
+        assert!(
+            response["findings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|finding| {
+                    finding["message"] == "candidate: config v2 requires snapshot v2"
+                }),
+            "{response}"
+        );
+    }
 }
 
 #[test]

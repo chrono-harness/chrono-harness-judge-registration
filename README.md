@@ -20,7 +20,7 @@
 | `input-coverage-tests` | 输入闭包消费登记的 domain 行 | 输入状态、绑定数和闭包状态逐项变化时核对精确接受条件 |
 | `scheduling` | `execution::scheduling` 在执行前检查参与操作的 claims | 计划内每个操作都有显式声明，允许计划之外另有生产操作 |
 | `scheduling-tests` | 完整和不完整的执行计划 | 包含额外声明和缺一个声明得到不同结果 |
-| `snapshot-header-tests` | `inputs::snapshot_shape`、快照生产和读取共用头与选择器判定 | v1/v2/v3、未知 schema、选择器字段和链接、absent 表示、直接版本边界；JSON 入口区分字段为 null 和字段缺省 |
+| `snapshot-header-tests` | `inputs::snapshot_shape`、快照生产和读取共用头与选择器判定 | v1/v2/v3、未知 schema、选择器字段和链接、absent 表示、直接版本边界；JSON 入口区分字段为 null 和字段缺省；端点缺少或版本不符时按配置选择返回首个版本诊断。 |
 | `snapshot-records-tests` | `inputs::retained_shape` 把 JSON 字段交给 `parse_retained`，解析器调用字节解码或返回原错误 | 缺失与未知字段的先后，absent、bytes、blob 分支，路径、摘要、长度和解码调用次数 |
 | `reference-syntax-tests` | `schema::validate_reference_syntax` 解码声明，向 runner 查询路径判定，再调用前后缀与 base 检查 | 独立前后缀、base、空串及路径判定组合；原生适配器检查输入路径和 250/251 条边界 |
 

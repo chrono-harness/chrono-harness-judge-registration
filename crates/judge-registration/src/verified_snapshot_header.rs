@@ -120,6 +120,36 @@ pub fn select_snapshot_schema(version: Option<u64>, selected: bool) -> (schema: 
     }
 }
 
+/// Decide the endpoint version gate before decoding the rest of a retained snapshot.
+pub fn admit_endpoint_snapshot_version(
+    config_version: Option<u64>, selected: bool, schema: Option<&str>,
+) -> (out: Result<(), &'static str>)
+    ensures ({
+        let required = config_version == Some(2u64) || config_version == Some(3u64)
+            || config_version == Some(4u64);
+        let expected = if selected { "chrono-input-snapshot/v3"@ } else { "chrono-input-snapshot/v2"@ };
+        let accepted = !required || match schema { Some(value) => value@ == expected, None => false };
+        match out {
+            Ok(()) => accepted,
+            Err(message) => !accepted && message@ == if selected {
+                "selected config requires snapshot v3"@
+            } else { "config v2 requires snapshot v2"@ },
+        }
+    }),
+{
+    match config_version {
+        Some(2) | Some(3) | Some(4) => {
+            let expected = select_snapshot_schema(config_version, selected);
+            if let Some(value) = schema {
+                if <&str>::exec_eq(value, expected) { return Ok(()); }
+            }
+            if selected { Err("selected config requires snapshot v3") }
+            else { Err("config v2 requires snapshot v2") }
+        },
+        _ => Ok(()),
+    }
+}
+
 /// Parse the retained representation without reading or repairing its contents.
 pub enum Retained<'a, B = Vec<u8>> {
     Absent,
