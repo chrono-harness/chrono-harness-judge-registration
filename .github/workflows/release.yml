@@ -63,13 +63,29 @@ jobs:
           version: 2026.11.12
           cache: false
           install_args: http:chrono-harness
-      - name: Exercise worktree artifact classification with the pinned runner
+      - name: Exercise classification and installed judge binding with the pinned runner
         env:
           PLATFORM: ${{ matrix.platform }}
         run: |
           set -euo pipefail
           binary="$RUNNER_TEMP/dist/chrono-judge-registration-$PLATFORM"
           "$binary" worktree-inputs-v1 <<< '{"operation":"nonartifact-paths","config":{"artifacts":[{"path":".chrono-harness/state/"}]},"paths":["src/demo.rs",".chrono-harness/state/run"]}' | jq -e '.paths == ["src/demo.rs"]'
+          install_dir="$RUNNER_TEMP/registration-install"
+          host="$RUNNER_TEMP/registration-host"
+          mkdir -p "$install_dir" "$host/.chrono-harness/bin"
+          image="$install_dir/chrono-judge-registration"
+          cp "$binary" "$image"
+          ln -s "$image" "$host/.chrono-harness/bin/chrono-judge-registration"
+          digest=$(shasum -a 256 "$binary" | cut -d' ' -f1)
+          version=$("$binary" --version)
+          cd "$host"
+          jq -cn --arg sha "$digest" --arg version "${version##* }" '{
+            operation:"bound-judge-path", binding:{
+              id:"initial-registration", executable:".chrono-harness/bin/chrono-judge-registration",
+              version:$version, sha256:$sha, argv:["--protocol","chrono-initial-judge/v1"],
+              selector:"every-initial", after:[], modes:["inventory"]
+            }}' | chrono-harness judge-evidence-v1 |
+            jq -es --arg image "$(cd "$install_dir" && pwd -P)/chrono-judge-registration" '. == [{Ok:$image}]'
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ${{ matrix.platform }}

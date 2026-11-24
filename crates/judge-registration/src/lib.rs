@@ -587,14 +587,11 @@ fn readiness(
         );
     }
     for j in n.judges["judges"].as_array().unwrap() {
-        let path = checked_path(root, j["executable"].as_str().unwrap())?;
-        if j["sha256"].is_null()
-            || fs::read(&path).ok().map(|v| sha256(&v)).as_deref() != j["sha256"].as_str()
-        {
+        if let Err(error) = wire::bound_judge_path(root, j) {
             issue(
                 r,
                 "E_EXECUTABLE_BINDING",
-                format!("missing/mismatched candidate executable {}", j["id"]),
+                format!("candidate executable {}: {error}", j["id"]),
                 "/judges",
                 true,
             );
