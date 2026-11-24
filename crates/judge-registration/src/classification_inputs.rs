@@ -1,6 +1,9 @@
 //! Resolve caller-selected classification documents using one request-bound Git reader.
-use crate::views_with_reader;
-use chrono_harness::{CommandSpec, facts, wire::Request};
+use crate::{
+    historical_git::{HistoricalGit, InstalledGit},
+    transition::installed_views,
+};
+use chrono_harness::{CommandSpec, wire::Request};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
@@ -41,8 +44,8 @@ pub fn documents(
     Ok(docs)
 }
 
-fn prepare(req: &Request, reader: &facts::Reader, selector: &Path) -> Result<Value, String> {
-    let (a, b, _) = views_with_reader(req, reader)?;
+fn prepare(req: &Request, reader: &InstalledGit, selector: &Path) -> Result<Value, String> {
+    let (a, b, _) = installed_views(req, reader, None)?;
     let changed = req.delta.iter().map(|d| d.path.as_str()).collect();
     let base = a.classification_view(&changed);
     let candidate = b.classification_view(&changed);
@@ -128,14 +131,10 @@ fn prepare(req: &Request, reader: &facts::Reader, selector: &Path) -> Result<Val
 /// Judge pipeline input producer. Data errors preserve every completed Git read.
 pub fn query(req: &Request, selector: &Path) -> Value {
     let mut outputs = BTreeMap::new();
-    let result = (|| {
-        req.validate()?;
-        let reader = facts::Reader::for_request(req)?;
-        let result = prepare(req, &reader, selector);
-        if reader.is_bound() {
-            outputs.insert("git_facts", reader.observation());
-        }
-        result
-    })();
+    let (result, observation) =
+        InstalledGit::with_request(req, |reader| prepare(req, reader, selector));
+    if let Some(observation) = observation {
+        outputs.insert("git_facts", observation);
+    }
     json!({"request_id":req.request_id,"outputs":outputs,"result":result})
 }

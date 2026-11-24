@@ -1,6 +1,7 @@
 //! Resolve only the test retirements requested by a planner.
 use crate::{Registrations, downstream_validator, validate_test_retirement};
-use chrono_harness::{facts, units, wire::Request};
+use crate::{historical_git::InstalledGit, transition::installed_views};
+use chrono_harness::{units, wire::Request};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, io::Read, path::Path};
@@ -66,17 +67,19 @@ pub fn query(root: &Path, input: impl Read) -> Result<Value, String> {
                     "route collection requires this checkout and a collection scope".into(),
                 );
             }
-            let reader = facts::Reader::for_request(&request)?;
-            let (old, current, _) =
-                crate::views_for_collection_inputs_with(&request, &reader, &|units| {
-                    migration
-                        .as_ref()
-                        .filter(|m| m.units == units)
-                        .map(|m| m.originals.clone())
-                        .ok_or_else(|| {
-                            "missing original migration inputs for the selected units".to_owned()
-                        })
-                })?;
+            let reports = |units: &[String]| {
+                migration
+                    .as_ref()
+                    .filter(|m| m.units == units)
+                    .map(|m| m.originals.clone())
+                    .ok_or_else(|| {
+                        "missing original migration inputs for the selected units".to_owned()
+                    })
+            };
+            let (old, current, _) = InstalledGit::with_request(&request, |reader| {
+                installed_views(&request, reader, Some(&reports))
+            })
+            .0?;
             (old, current, Some(request.request_id))
         }
     };

@@ -98,6 +98,7 @@ impl Drop for Stream {
 }
 impl<'a> InstalledGit<'a> {
     pub(crate) fn open(request: &'a Request) -> Result<Self> {
+        request.validate()?;
         Self::start(
             &request.candidate.root,
             Some(&request.base.commit),
@@ -180,6 +181,20 @@ impl<'a> InstalledGit<'a> {
     }
     pub(crate) fn query<T: DeserializeOwned>(&self, op: Value) -> Result<T> {
         self.stream.borrow_mut().exchange(&op)
+    }
+    pub(crate) fn with_request<T>(
+        request: &'a Request,
+        action: impl FnOnce(&Self) -> Result<T>,
+    ) -> (Result<T>, Option<Value>) {
+        let reader = match Self::open(request) {
+            Ok(reader) => reader,
+            Err(error) => return (Err(error), None),
+        };
+        let result = action(&reader);
+        match reader.finish() {
+            Ok(observation) => (result, (!observation.is_null()).then_some(observation)),
+            Err(error) => (result.and(Err(error)), None),
+        }
     }
     pub(crate) fn inventory(&self) -> Result<Inventory> {
         self.query(json!({"op":"candidate-inventory"}))
