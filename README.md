@@ -27,7 +27,7 @@
 | snapshot | entry 和按路径索引的固定 documents | 完整登记检查后的 effective_config 路径及该配置选定的 filemap |
 | custody-config | config | 通过宿主配置校验的 filemap_path |
 | custody-filemap | filemap | FILEMAP 格式通过时返回 valid 为 true |
-| nonartifact-paths | config 和 paths | 保留顺序的未登记为产物的路径 |
+| nonartifact-paths | config 和 paths | 通过已安装 runner 验证产物目录，按原顺序返回其余路径 |
 
 `chrono-judge-registration classification-views-v1` 从 stdin 读取封存的 chrono-judge/v1 请求。它校验请求身份，按相同固定端点和历史转换规则解释登记，返回 request_id、base、candidate。每端的 endpoint 给出 workflow 路径、变更路径在 FILEMAP 的 surfaces 和 semantic_fields；documents 包含此次变更涉及的已解释登记文档，warning_code 取自本端工作流。mixed 可据此选择所需文档，外部文档仍从指定提交读取。登记拒绝返回原始 error，绑定 Git 的请求同时返回 git_facts。解码或传输失败退出 2。
 
