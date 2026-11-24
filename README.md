@@ -6,6 +6,8 @@
 
 使用 `cargo build --locked --manifest-path crates/judge-registration/Cargo.toml` 构建。安装 Verus 0.2026.04.24.f8e1704，运行 `VERUS=/path/to/verus ./check.sh` 检查格式、构建、测试及证明。
 
+登记判官的构建、测试和证明只读取本仓源码与锁定的第三方依赖。安装本仓发行后，`execution-methods` 和 `test-owners` 可直接处理 stdin。宿主执行完整登记检查时，通过 PATH 提供 mise 清单固定的 runner 与 routes。runner 通过 `record-command-v1` 返回解码器和分类选择器的原始进程记录，routes 通过 `check-unit-assignments-v1` 校验执行单元。启用滚动日志的宿主同时安装 diagnostics。
+
 源码来自 [固定版本的原实现](https://github.com/ChronoAIProject/chrono-harness/tree/5f6892dfa2f73675a84e4ebdc3b06eb83b824d6e/crates/judge-registration)。
 
 `chrono-judge-registration execution-methods` 从标准输入读取一份项目和脚本登记 JSON，沿用判官的 64 MiB 输入上限。成功时输出从操作 ID 到全部方法的 JSON 映射，包含 owner、operation、tool、argv 和已登记的 output_contract。相同操作 ID 的不同声明分别保留，供发布配方检查歧义。成功退出 0，读取、解析、登记或写出失败退出 2，错误发往标准错误。
