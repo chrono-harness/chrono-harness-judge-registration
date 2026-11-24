@@ -14,6 +14,36 @@ use vstd::prelude::*;
 verus! {
 
 #[cfg_attr(not(verus_keep_ghost), test)]
+fn execution_plan_limits_are_inclusive_and_require_time_and_output() {
+    let limit = 64;
+    let max = policy::Bounds { timeout_seconds: u64::MAX, output_limit_bytes: limit };
+    let low = policy::Bounds { timeout_seconds: 1, output_limit_bytes: 1 };
+    let too_large = policy::Bounds { timeout_seconds: 1, output_limit_bytes: 65 };
+    let zero_time = policy::Bounds { timeout_seconds: 0, output_limit_bytes: 1 };
+    let zero_output = policy::Bounds { timeout_seconds: 1, output_limit_bytes: 0 };
+    let ok = max.valid(limit); assert(ok);
+    let ok = low.valid(limit); assert(ok);
+    let ok = too_large.valid(limit); assert(!ok);
+    let ok = zero_time.valid(limit); assert(!ok);
+    let ok = zero_output.valid(limit); assert(!ok);
+}
+
+// Use the same abstract key twice for a duplicate. The wire query exercises separately decoded names.
+proof fn selected_and_overridden_operations(first: String, second: String, blank: String)
+    requires first@.len() > 0, second@.len() > 0, first != second, blank@.len() == 0,
+{
+    let selected = seq![first, second];
+    let upper = policy::Bounds { timeout_seconds: 1, output_limit_bytes: 64 };
+    let bad = policy::Bounds { timeout_seconds: 1, output_limit_bytes: 65 };
+    assert(policy::admitted_operations(selected, 2));
+    assert(!policy::admitted_operations(seq![first, first], 2));
+    assert(!policy::admitted_operations(seq![first, blank], 2));
+    assert(policy::permitted_override(selected, second, upper, 64));
+    assert(!policy::permitted_override(selected, second, bad, 64));
+    assert(!policy::permitted_override(selected, blank, upper, 64));
+}
+
+#[cfg_attr(not(verus_keep_ghost), test)]
 fn coverage_requires_all_participants_and_allows_production_claims() {
     let empty: BTreeSet<usize> = BTreeSet::new();
     let mut operations: BTreeSet<usize> = BTreeSet::new();

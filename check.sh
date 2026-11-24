@@ -33,6 +33,8 @@ ln -s "$CARGO_TARGET_DIR/debug/chrono-harness-test-cli" "$scratch/test-bin/chron
 test_runner=$(jq -cn --arg path "PATH=$scratch/test-bin" '["/usr/bin/env", $path]')
 cargo test --locked --manifest-path crates/judge-registration-tests/Cargo.toml --config "target.'cfg(all())'.runner=$test_runner" --color never -- --format pretty | tee "$scratch/tests.log"
 for consumer in \
+  execution_plan_queries_enforce_operation_identity_and_both_resource_limits \
+  execution_plan_limits_are_inclusive_and_require_time_and_output \
   git_facts::input_closure_bindings_accept_explicit_external_nodes \
   git_facts::required_candidate_snapshot_is_rejected_by_registration \
   retained_input_duplicates_check_each_descriptor_and_refresh_on_each_validation; do

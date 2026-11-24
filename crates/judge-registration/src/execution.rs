@@ -13,33 +13,20 @@ pub struct Plan {
     pub operation_bounds: BTreeMap<String, Bounds>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Bounds {
-    pub timeout_seconds: u64,
-    pub output_limit_bytes: usize,
-}
-impl Bounds {
-    fn valid(&self) -> bool {
-        self.timeout_seconds > 0
-            && (1..=crate::PROJECTS_INPUT_LIMIT).contains(&self.output_limit_bytes)
-    }
-}
+pub use crate::verified_scheduling::Bounds;
+
 impl Plan {
     pub fn validate(&self) -> Result<(), String> {
-        if self.operations.is_empty()
-            || self.operations.iter().any(|s| s.is_empty())
-            || self.operations.iter().collect::<BTreeSet<_>>().len() != self.operations.len()
-            || !(Bounds {
-                timeout_seconds: self.timeout_seconds,
-                output_limit_bytes: self.output_limit_bytes,
-            })
-            .valid()
-            || self
-                .operation_bounds
-                .iter()
-                .any(|(operation, bounds)| !self.operations.contains(operation) || !bounds.valid())
-        {
+        let global = Bounds {
+            timeout_seconds: self.timeout_seconds,
+            output_limit_bytes: self.output_limit_bytes,
+        };
+        if !crate::verified_scheduling::valid_plan(
+            &self.operations,
+            global,
+            &self.operation_bounds,
+            crate::PROJECTS_INPUT_LIMIT,
+        ) {
             return Err("E_EXECUTION_PLAN: invalid operations or bounds".into());
         }
         Ok(())

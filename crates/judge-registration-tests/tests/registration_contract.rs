@@ -1727,6 +1727,55 @@ fn plan_declarations_keep_unselected_bounds_duplicate_methods_and_their_original
 }
 
 #[test]
+fn execution_plan_queries_enforce_operation_identity_and_both_resource_limits() {
+    use chrono_judge_registration::PROJECTS_INPUT_LIMIT as LIMIT;
+    use chrono_judge_registration::execution::plan_declarations;
+    let max = json!({"timeout_seconds":u64::MAX,"output_limit_bytes":LIMIT});
+    let min = json!({"timeout_seconds":1,"output_limit_bytes":1});
+    let plan = json!({"operations":["a","b"], "timeout_seconds":1, "output_limit_bytes":LIMIT,
+        "operation_bounds":{"b":max,"a":min}});
+    let read = |plans: Value| {
+        let q =
+            json!({"filemap":{"execution_plans":plans}, "projects":{"projects":[],"scripts":[]}});
+        plan_declarations(q.to_string().as_bytes())
+    };
+    let result = read(json!({"test:ok":plan})).unwrap();
+    assert_eq!(result["plans"]["test:ok"], plan);
+    for (field, invalid) in [
+        ("operations", json!([])),
+        ("operations", json!(["a", ""])),
+        ("operations", json!(["a", "b", "a"])),
+        ("timeout_seconds", json!(0)),
+        ("output_limit_bytes", json!(0)),
+        ("output_limit_bytes", json!(LIMIT + 1)),
+        ("operation_bounds", json!({"c":min})),
+        (
+            "operation_bounds",
+            json!({"a":{"timeout_seconds":0,"output_limit_bytes":1}}),
+        ),
+        (
+            "operation_bounds",
+            json!({"b":{"timeout_seconds":1,"output_limit_bytes":0}}),
+        ),
+        (
+            "operation_bounds",
+            json!({"b":{"timeout_seconds":1,"output_limit_bytes":LIMIT+1}}),
+        ),
+    ] {
+        let mut candidate = plan.clone();
+        candidate[field] = invalid;
+        // The earlier invalid plan wins over the later invalid plan name.
+        let err = read(json!({"test:a":candidate,"z":plan})).unwrap_err();
+        assert_eq!(
+            err, "E_EXECUTION_PLAN: invalid operations or bounds: test:a",
+            "{field}"
+        );
+        let err = read(json!({"bad":candidate,"test:a":candidate})).unwrap_err();
+        assert_eq!(err, "E_EXECUTION_PLAN: invalid plan bad", "{field}");
+    }
+}
+
+#[test]
 fn classification_documents_read_only_missing_selected_paths() {
     use chrono_judge_registration::classification_inputs::documents;
     let present = ["converted", "extra"].into();
