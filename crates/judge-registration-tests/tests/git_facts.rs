@@ -118,6 +118,35 @@ fn run_with_endpoint_inputs(h: &BoundHost) -> (i32, Value) {
 }
 
 #[test]
+fn required_candidate_snapshot_is_rejected_by_registration() {
+    let h = BoundHost::new();
+    let (exit, complete) = h.run();
+    assert_eq!(exit, 0, "{complete}");
+
+    let path = ".chrono-harness/state/coverage-inputs.json";
+    let mut pair: Value =
+        serde_json::from_slice(&fs::read(h.host.root().join(path)).unwrap()).unwrap();
+    pair.as_object_mut().unwrap().remove("candidate");
+    write(h.host.root(), path, &pair);
+    let mut context = h.host.context();
+    context["retained_inputs"] = json!(path);
+    let (exit, response) = h.host.run_context(context);
+    assert_ne!(exit, 0, "{response}");
+    assert!(
+        response["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|result| {
+                result["message"].as_str().is_some_and(|cause| {
+                    cause.contains("candidate: config v2 requires snapshot v2")
+                })
+            }),
+        "{response}"
+    );
+}
+
+#[test]
 fn input_closure_bindings_accept_explicit_external_nodes() {
     let mut h = BoundHost::new();
     h.host.edit(CONFIG, |config| {
