@@ -162,18 +162,53 @@ fn facts_session() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn main() -> ExitCode {
-    if std::env::args_os()
-        .skip(1)
-        .eq([std::ffi::OsString::from("git-facts-v1")])
-    {
-        return match facts_session() {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(error) => {
-                eprintln!("registration fixture: {error}");
-                ExitCode::FAILURE
+fn retained_session() -> Result<(), Box<dyn std::error::Error>> {
+    use chrono_harness::retained_artifacts::{self, retention};
+    let root = std::env::current_dir()?;
+    let _scope = retention::read_scope(&root)?;
+    let mut out = std::io::stdout().lock();
+    for frame in std::io::stdin().lock().lines() {
+        let query: Value = serde_json::from_str(&frame?)?;
+        let result = (|| {
+            let path = field(&query, "path")?;
+            match field(&query, "operation")? {
+                "retain-read" => {
+                    retention::read_guard(&root, path)?;
+                    Ok(Value::Null)
+                }
+                "checked-path" => Ok(json!(chrono_harness::no_symlink_parents(&root, path)?)),
+                "artifact-identity" => {
+                    let transport: Option<chrono_harness::prepared::ArtifactTransport> =
+                        serde_json::from_value(query["transport"].clone())
+                            .map_err(|e| e.to_string())?;
+                    let (sha256, length) = retained_artifacts::identity(
+                        &root,
+                        &query["artifacts"],
+                        path,
+                        transport.as_ref(),
+                    )?;
+                    Ok(json!({"sha256":sha256,"length":length}))
+                }
+                op => Err(format!("unexpected fixture custody operation {op}")),
             }
-        };
+        })();
+        reply(&mut out, result)?;
     }
-    chrono_harness::cli_main()
+    Ok(())
+}
+
+fn main() -> ExitCode {
+    let args: Vec<_> = std::env::args_os().skip(1).collect();
+    let result = match args.as_slice() {
+        [op] if op == "git-facts-v1" => facts_session(),
+        [op] if op == "retained-artifacts-v1" => retained_session(),
+        _ => return chrono_harness::cli_main(),
+    };
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("registration fixture: {error}");
+            ExitCode::FAILURE
+        }
+    }
 }

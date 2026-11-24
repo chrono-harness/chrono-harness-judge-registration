@@ -1,0 +1,74 @@
+//! A single invocation of an installed runner JSON-lines protocol.
+use serde::{Serialize, de::DeserializeOwned};
+use std::{
+    io::{BufRead, BufReader, Write},
+    path::Path,
+    process::{Child, ChildStdin, ChildStdout, Command, Stdio},
+};
+type Result<T> = std::result::Result<T, String>;
+
+pub(crate) struct Stream {
+    protocol: &'static str,
+    child: Child,
+    input: Option<ChildStdin>,
+    output: BufReader<ChildStdout>,
+}
+impl Stream {
+    pub(crate) fn start(protocol: &'static str, cwd: Option<&Path>) -> Result<Self> {
+        let mut command = Command::new("chrono-harness");
+        if let Some(cwd) = cwd {
+            command.current_dir(cwd);
+        }
+        let mut child = command
+            .arg(protocol)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .map_err(|error| format!("start chrono-harness {protocol}: {error}"))?;
+        Ok(Self {
+            protocol,
+            input: child.stdin.take(),
+            output: BufReader::new(child.stdout.take().unwrap()),
+            child,
+        })
+    }
+    pub(crate) fn exchange<T: DeserializeOwned>(
+        &mut self,
+        operation: &impl Serialize,
+    ) -> Result<T> {
+        let input = self.input.as_mut().ok_or("closed runner session")?;
+        serde_json::to_writer(&mut *input, operation).map_err(|error| error.to_string())?;
+        input
+            .write_all(b"\n")
+            .and_then(|()| input.flush())
+            .map_err(|error| error.to_string())?;
+        let mut line = Vec::new();
+        self.output
+            .read_until(b'\n', &mut line)
+            .map_err(|error| error.to_string())?;
+        if line.pop() != Some(b'\n') {
+            return Err("E_PROTOCOL: incomplete runner response".into());
+        }
+        serde_json::from_slice::<Result<T>>(&line).map_err(|error| error.to_string())?
+    }
+    pub(crate) fn finish(&mut self) -> Result<()> {
+        self.input.take();
+        let trailing = std::io::copy(&mut self.output, &mut std::io::sink());
+        let status = self.child.wait().map_err(|error| error.to_string())?;
+        if trailing.map_err(|error| error.to_string())? != 0 {
+            return Err("E_PROTOCOL: trailing runner response".into());
+        }
+        if status.success() {
+            Ok(())
+        } else {
+            Err(format!("{} {status}", self.protocol))
+        }
+    }
+}
+impl Drop for Stream {
+    fn drop(&mut self) {
+        if self.input.is_some() {
+            let _ = self.finish();
+        }
+    }
+}

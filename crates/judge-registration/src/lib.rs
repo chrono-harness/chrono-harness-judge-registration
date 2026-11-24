@@ -23,6 +23,8 @@ pub mod project_views;
 #[cfg(not(verus_keep_ghost))]
 mod registrations;
 #[cfg(not(verus_keep_ghost))]
+mod runner_session;
+#[cfg(not(verus_keep_ghost))]
 pub use registrations::check_documents;
 #[cfg(not(verus_keep_ghost))]
 pub mod ci_transition;
