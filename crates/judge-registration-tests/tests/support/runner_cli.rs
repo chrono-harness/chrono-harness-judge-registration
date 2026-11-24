@@ -261,6 +261,18 @@ fn evidence_session() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 Ok(Value::Null)
             }
+            "bound-judge-path" => {
+                let binding = &query["binding"];
+                let path = std::env::current_dir()
+                    .map_err(|e| e.to_string())?
+                    .join(field(binding, "executable")?);
+                let image = fs::canonicalize(path).map_err(|e| e.to_string())?;
+                if binding["sha256"] != wire::sha256(&fs::read(&image).map_err(|e| e.to_string())?)
+                {
+                    return Err("fixture: judge digest differs".into());
+                }
+                Ok(json!(image))
+            }
             "report-paths" => {
                 let block = &query["profile"]["execution_units"];
                 let collection = field(block, "report_path")?;

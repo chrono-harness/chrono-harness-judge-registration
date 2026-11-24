@@ -62,10 +62,8 @@ fn evaluate(req: &Request, response: &mut Response, reader: &InstalledGit) -> Re
         .find(|b| b["id"] == req.judge_id)
         .ok_or("initial judge unregistered")?;
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let path = binding["executable"]
-        .as_str()
-        .ok_or("initial judge executable")?;
-    if fs::canonicalize(checked_path(root, path)?).map_err(|e| e.to_string())?
+    let image = wire::bound_judge_path(root, binding)?;
+    if fs::canonicalize(image).map_err(|e| e.to_string())?
         != fs::canonicalize(&exe).map_err(|e| e.to_string())?
         || binding["sha256"] != sha256(&fs::read(&exe).map_err(|e| e.to_string())?)
         || binding["version"] != env!("CARGO_PKG_VERSION")

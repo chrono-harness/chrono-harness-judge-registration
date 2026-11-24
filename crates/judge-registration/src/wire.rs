@@ -162,6 +162,13 @@ pub fn evidence<T: serde::de::DeserializeOwned>(operation: Value) -> Result<T, S
     })
 }
 
+/// Ask the same installed runner that launches judges to verify the fixed binding.
+pub(crate) fn bound_judge_path(root: &std::path::Path, binding: &Value) -> Result<PathBuf, String> {
+    Stream::with("judge-evidence-v1", Some(root), |stream| {
+        stream.exchange(&json!({"operation":"bound-judge-path","binding":binding}))
+    })
+}
+
 impl Request {
     pub fn validate(&self) -> Result<(), String> {
         evidence(json!({"operation":"validate-request", "request":self}))
