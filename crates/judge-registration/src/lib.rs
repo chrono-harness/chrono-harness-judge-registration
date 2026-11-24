@@ -54,9 +54,8 @@ pub mod worktree;
 #[cfg(not(verus_keep_ghost))]
 pub use transition::{
     ambiguity_repaired, classification_views, downstream_validator, filemap_views, interpret,
-    interpret_scheduling_with_reader, interpret_with_reader, replacements, retirement_declaration,
-    retirement_requests, reused_tools, validate_retained_view, validate_test_retirement, views,
-    views_for_collection_inputs_with, views_with_reader,
+    replacements, retirement_declaration, retirement_requests, reused_tools,
+    validate_test_retirement, views,
 };
 #[cfg(not(verus_keep_ghost))]
 pub use verified_nodes::NodeKind;
@@ -237,7 +236,6 @@ fn evaluate(
     r: &mut Response,
     reader: &historical_git::InstalledGit<'_>,
 ) -> Result<()> {
-    use historical_git::HistoricalGit;
     req.validate()?;
     let root = &req.candidate.root;
     let actual_root: std::path::PathBuf = reader.query(value!({"op":"checkout-root"}))?;
@@ -776,7 +774,7 @@ pub(crate) fn input_closure_findings(n: &Registrations) -> Vec<Finding> {
 
 #[cfg(not(verus_keep_ghost))]
 fn references(
-    reader: &impl historical_git::HistoricalGit,
+    reader: &historical_git::InstalledGit<'_>,
     root: &Path,
     candidate: &str,
     old: Option<&Registrations>,

@@ -1,8 +1,5 @@
 //! Finite candidate-owned decoders for explicitly named historical profiles.
-use crate::{
-    Registrations, execution,
-    historical_git::{HistoricalGit, InstalledGit},
-};
+use crate::{Registrations, execution, historical_git::InstalledGit};
 use chrono_harness::{
     CommandSpec, facts, json,
     observation::{self, Tool},
@@ -86,21 +83,9 @@ fn view_binding(
 }
 /// Rebuild the original registration view from current immutable endpoint
 /// data and retained conversion observations. This never invokes the decoder.
-pub fn validate_retained_view(
-    req: &Request,
-    reader: &facts::Reader,
-    declaration_root: &Path,
-    supplied: &Value,
-) -> Result<(), String> {
-    let base = reader.registry_snapshot(declaration_root, &req.base.commit, &req.config_path)?;
-    let candidate =
-        reader.registry_snapshot(declaration_root, &req.candidate.commit, &req.config_path)?;
-    validate_retained_snapshots(req, reader, declaration_root, supplied, base, candidate)
-}
-
 pub(crate) fn validate_retained_snapshots(
     req: &Request,
-    reader: &impl HistoricalGit,
+    reader: &InstalledGit<'_>,
     declaration_root: &Path,
     supplied: &Value,
     base: facts::RegistrySnapshot,
@@ -134,12 +119,6 @@ pub(crate) fn validate_retained_snapshots(
         return Err("E_COLLECTION_INPUT: original registration view differs".into());
     }
     Ok(())
-}
-pub fn views_with_reader(
-    req: &Request,
-    reader: &facts::Reader,
-) -> Result<(Registrations, Registrations, Value), String> {
-    views_using_reports(req, reader, None)
 }
 pub(crate) fn installed_views(
     request: &Request,
@@ -188,47 +167,12 @@ fn endpoint_reply(req: &Request, project: impl Fn(&Registrations) -> Value) -> V
     reply
 }
 
-/// Acquire only the declared historical decoder test's unit originals, and only
-/// if the fixed endpoint profiles actually require conversion. DELTA selection
-/// still belongs to FILEMAP/routes after registration interprets those endpoints.
-pub fn views_for_collection_inputs_with(
-    req: &Request,
-    reader: &facts::Reader,
-    reports: &dyn Fn(&[String]) -> Result<chrono_harness::units::FullManifest, String>,
-) -> Result<(Registrations, Registrations, Value), String> {
-    if !matches!(
-        req.scope,
-        Some(chrono_harness::units::Scope::Collect { .. })
-    ) {
-        return Err("collection report inputs require collection scope".into());
-    }
-    views_using_reports(req, reader, Some(reports))
-}
-fn views_using_reports(
-    req: &Request,
-    reader: &facts::Reader,
-    reports: Option<&dyn Fn(&[String]) -> Result<chrono_harness::units::FullManifest, String>>,
-) -> Result<(Registrations, Registrations, Value), String> {
-    let base_snapshot =
-        reader.registry_snapshot(&req.candidate.root, &req.base.commit, &req.config_path)?;
-    let candidate_snapshot =
-        reader.registry_snapshot(&req.candidate.root, &req.candidate.commit, &req.config_path)?;
-    views_from_snapshots(
-        req,
-        base_snapshot,
-        candidate_snapshot,
-        reports,
-        || Ok(reader),
-        true,
-    )
-}
-
-pub(crate) fn views_from_snapshots<'a, R: HistoricalGit + ?Sized + 'a>(
+pub(crate) fn views_from_snapshots<'a>(
     req: &Request,
     base_snapshot: facts::RegistrySnapshot,
     candidate_snapshot: facts::RegistrySnapshot,
     reports: Option<&dyn Fn(&[String]) -> Result<chrono_harness::units::FullManifest, String>>,
-    reader: impl Fn() -> Result<&'a R, String>,
+    reader: impl Fn() -> Result<&'a InstalledGit<'a>, String>,
     check_binding: bool,
 ) -> Result<(Registrations, Registrations, Value), String> {
     let selector_required =
@@ -339,58 +283,6 @@ pub fn interpret(
     );
     let closed = reader.finish();
     result.and_then(|value| closed.map(|_| value))
-}
-/// Reuse the caller's selected facts reader and retain its complete acquisition record.
-pub fn interpret_with_reader(
-    reader: &facts::Reader,
-    root: &Path,
-    base: &str,
-    candidate_oid: &str,
-    config: &str,
-    raw: Values,
-    candidate: Values,
-    env: &BTreeMap<String, String>,
-) -> Result<(Registrations, Registrations, Value), String> {
-    reader.verify_config(root, candidate_oid)?;
-    interpret_mode(
-        || Ok(reader),
-        root,
-        base,
-        candidate_oid,
-        config,
-        raw,
-        candidate,
-        env,
-        None,
-        None,
-        true,
-    )
-}
-/// Declaration scheduling shares profile matching but never launches a decoder
-/// or acquires its interpreter. Actual checks retain conversion admission.
-pub fn interpret_scheduling_with_reader(
-    reader: &facts::Reader,
-    root: &Path,
-    base: &str,
-    candidate_oid: &str,
-    config: &str,
-    raw: Values,
-    candidate: Values,
-) -> Result<(Registrations, Registrations, Value), String> {
-    reader.verify_config(root, candidate_oid)?;
-    interpret_mode(
-        || Ok(reader),
-        root,
-        base,
-        candidate_oid,
-        config,
-        raw,
-        candidate,
-        &BTreeMap::new(),
-        None,
-        None,
-        false,
-    )
 }
 fn retained_conversion(
     req: &Request,
@@ -503,8 +395,8 @@ fn retained_conversion(
     }
     Ok(Some(retained.unwrap_or(Value::Null)))
 }
-pub(crate) fn interpret_ci_documents<'a, R: HistoricalGit + ?Sized + 'a>(
-    reader: impl Fn() -> Result<&'a R, String>,
+pub(crate) fn interpret_ci_documents<'a>(
+    reader: impl Fn() -> Result<&'a InstalledGit<'a>, String>,
     root: &Path,
     base: &str,
     candidate_oid: &str,
@@ -528,8 +420,8 @@ pub(crate) fn interpret_ci_documents<'a, R: HistoricalGit + ?Sized + 'a>(
     )
 }
 
-fn interpret_mode<'a, R: HistoricalGit + ?Sized + 'a>(
-    get_reader: impl Fn() -> Result<&'a R, String>,
+fn interpret_mode<'a>(
+    get_reader: impl Fn() -> Result<&'a InstalledGit<'a>, String>,
     root: &Path,
     base: &str,
     candidate_oid: &str,

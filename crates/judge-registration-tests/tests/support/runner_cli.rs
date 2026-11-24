@@ -38,6 +38,13 @@ impl FactsFixture {
                     git,
                 })
             }
+            "history" => Ok(Self {
+                root: std::env::current_dir().map_err(|e| e.to_string())?,
+                base: None,
+                candidate: String::new(),
+                config: String::new(),
+                git: facts::Reader::legacy(),
+            }),
             mode @ ("observed" | "config") => {
                 let root = std::env::current_dir().map_err(|e| e.to_string())?;
                 let config = field(&header, "config")?.to_owned();

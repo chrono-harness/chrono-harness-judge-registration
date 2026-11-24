@@ -1,8 +1,5 @@
 //! Resolve caller-selected classification documents using one request-bound Git reader.
-use crate::{
-    historical_git::{HistoricalGit, InstalledGit},
-    transition::installed_views,
-};
+use crate::{historical_git::InstalledGit, transition::installed_views};
 use chrono_harness::{CommandSpec, wire::Request};
 use serde::Deserialize;
 use serde_json::{Value, json};

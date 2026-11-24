@@ -1,9 +1,5 @@
 //! Initial inventory checks share reference policy without inventing prior history.
-use crate::{
-    Registrations, Result,
-    historical_git::{HistoricalGit, InstalledGit},
-    issue,
-};
+use crate::{Registrations, Result, historical_git::InstalledGit, issue};
 use chrono_harness::{
     facts,
     initial::{Profile, Request},
