@@ -1,18 +1,13 @@
 //! Initial inventory checks share reference policy without inventing prior history.
-use crate::{
-    Registrations, Result,
-    historical_git::{HistoricalGit, InstalledGit},
-    issue,
-};
-use chrono_harness::{
-    facts,
-    initial::{Profile, Request},
-    no_symlink_parents, sha256,
-    wire::{self, Response, Status},
-};
+use crate::facts;
+use crate::inputs::checked_path;
+use crate::wire::sha256;
+use crate::wire::{self, Response, Status};
+use crate::{Registrations, Result, historical_git::InstalledGit, issue};
 use serde_json::{Value, json};
 use std::fs;
 
+use crate::wire::InitialRequest as Request;
 pub fn judge(req: &Request) -> Response {
     let mut response = req.response(Status::Pass);
     let result = req.validate().and_then(|()| {
@@ -49,30 +44,31 @@ fn evaluate(req: &Request, response: &mut Response, reader: &InstalledGit) -> Re
     if !req.profile_path.starts_with(".chrono-harness/") || req.profile_path == req.config_path {
         return Err("initial profile must name a separate host config".into());
     }
-    let bytes =
-        fs::read(no_symlink_parents(root, &req.profile_path)?).map_err(|e| e.to_string())?;
+    let bytes = fs::read(checked_path(root, &req.profile_path)?).map_err(|e| e.to_string())?;
     if sha256(&bytes) != req.profile_sha256
         || bytes != reader.blob(root, &req.candidate.commit, &req.profile_path)?
     {
         return Err("initial profile differs from fixed candidate".into());
     }
-    let profile: Profile = chrono_harness::decode(&bytes)?;
-    profile.validate()?;
-    if profile.host_config != req.config_path {
+    let profile: Value = crate::wire::decode(&bytes)?;
+    wire::evidence::<()>(json!({"operation":"validate-initial-profile","profile":profile}))?;
+    if profile["host_config"] != req.config_path {
         return Err("initial host config mismatch".into());
     }
-    let binding = profile
-        .judges
+    let binding = profile["judges"]
+        .as_array()
+        .ok_or("initial judge bindings")?
         .iter()
-        .find(|b| b.id == req.judge_id)
+        .find(|b| b["id"] == req.judge_id)
         .ok_or("initial judge unregistered")?;
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    if fs::canonicalize(no_symlink_parents(root, &binding.executable)?)
-        .map_err(|e| e.to_string())?
+    let path = binding["executable"]
+        .as_str()
+        .ok_or("initial judge executable")?;
+    if fs::canonicalize(checked_path(root, path)?).map_err(|e| e.to_string())?
         != fs::canonicalize(&exe).map_err(|e| e.to_string())?
-        || binding.sha256.as_deref()
-            != Some(sha256(&fs::read(&exe).map_err(|e| e.to_string())?).as_str())
-        || binding.version != env!("CARGO_PKG_VERSION")
+        || binding["sha256"] != sha256(&fs::read(&exe).map_err(|e| e.to_string())?)
+        || binding["version"] != env!("CARGO_PKG_VERSION")
     {
         return Err("initial binding differs from actual registration executable".into());
     }
@@ -82,7 +78,7 @@ fn evaluate(req: &Request, response: &mut Response, reader: &InstalledGit) -> Re
         return Err("initial registry digest mismatch".into());
     }
     for (path, original) in &snapshot.bytes {
-        if &fs::read(no_symlink_parents(root, path)?).map_err(|e| e.to_string())? != original {
+        if &fs::read(checked_path(root, path)?).map_err(|e| e.to_string())? != original {
             return Err(format!("checkout registry differs from candidate: {path}"));
         }
     }
@@ -143,9 +139,7 @@ fn evaluate(req: &Request, response: &mut Response, reader: &InstalledGit) -> Re
     {
         return Err("initial candidate checkout is dirty or changed".into());
     }
-    if chrono_harness::verified_status::first_unsupported_index_flag(&observed.index_flags)
-        .is_some()
-    {
+    if observed.index_flags.iter().any(|flag| flag.hides_changes()) {
         return Err("initial inventory rejects unsupported index flags".into());
     }
     let inventory = reader.inventory()?;

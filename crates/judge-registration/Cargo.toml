@@ -17,12 +17,14 @@ bench = false
 
 [dependencies]
 vstd = "=0.0.0-2026-04-20-1748"
-chrono-harness = { git = "https://github.com/chrono-harness/chrono-harness-runner.git", rev = "a1cff08f74d996d618372f20adc203d1b5904d50" }
+serde_yaml_ng = "=0.10.0"
+litrs = "=1.0.1"
+sha2 = "0.10"
+serde_jcs = "=0.2.0"
 serde_json = { version = "1", features = ["raw_value"] }
 serde = { version = "1", features = ["derive"] }
 time = { version = "=0.3.47", features = ["parsing"] }
 
-# Independent judge roots also compile the shared evidence consumers.
 [profile.dev]
 opt-level = 1
 debug-assertions = true

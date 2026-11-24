@@ -7,32 +7,7 @@ pub use fields::*;
 pub mod reference_syntax;
 #[cfg(not(verus_keep_ghost))]
 fn compiler_query<T: serde::de::DeserializeOwned>(request: &Value) -> Result<T> {
-    use std::process::{Command, Stdio};
-    let mut child = Command::new("chrono-harness")
-        .arg("compiler-output-v1")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| format!("start chrono-harness compiler-output-v1: {error}"))?;
-    let input = child.stdin.take().unwrap();
-    let (result, written) = std::thread::scope(|scope| {
-        let writer = scope.spawn(|| serde_json::to_writer(input, request));
-        (child.wait_with_output(), writer.join())
-    });
-    let result = result.map_err(|error| error.to_string())?;
-    if !result.status.success() {
-        let message = String::from_utf8_lossy(&result.stderr);
-        return Err(if message.is_empty() {
-            format!("compiler-output-v1 {}", result.status)
-        } else {
-            message.trim_end_matches('\n').into()
-        });
-    }
-    written
-        .map_err(|_| "compiler request writer panicked")?
-        .map_err(|e| e.to_string())?;
-    serde_json::from_slice(&result.stdout).map_err(|error| error.to_string())
+    crate::runner_session::query("chrono-harness", "compiler-output-v1", None, request)
 }
 
 #[cfg(not(verus_keep_ghost))]
@@ -79,7 +54,20 @@ pub fn validate_reference_syntax(declaration: &Value) -> Result {
 
 // Strict SPEC §3 structure. Reference/activation policy is evaluated separately.
 #[cfg(not(verus_keep_ghost))]
-use chrono_harness::{relative_path, wire};
+use crate::wire;
+#[cfg(not(verus_keep_ghost))]
+pub(crate) fn relative_path(path: &str) -> std::result::Result<(), String> {
+    use std::path::{Component, Path};
+    if path.is_empty()
+        || path.contains(['\0', '\n', '\r', '\\'])
+        || Path::new(path)
+            .components()
+            .any(|part| !matches!(part, Component::Normal(_)))
+    {
+        return Err(format!("invalid relative path: {path:?}"));
+    }
+    Ok(())
+}
 #[cfg(not(verus_keep_ghost))]
 use serde_json::{Map, Value};
 #[cfg(not(verus_keep_ghost))]
@@ -156,8 +144,10 @@ pub(crate) fn path(v: &Value) -> Result {
 #[cfg(not(verus_keep_ghost))]
 pub(crate) fn state_path(v: &Value, context: &str) -> Result {
     let p = string(v)?;
-    if !chrono_harness::verified_paths::valid_host_state_path(p.as_bytes()) {
-        relative_path(p)?;
+    relative_path(p)?;
+    if p.strip_prefix(".chrono-harness/state/")
+        .is_none_or(str::is_empty)
+    {
         return Err(context.into());
     }
     canonical_path(p)
@@ -289,7 +279,9 @@ pub fn config(v: &Value) -> Result {
     ];
     if matches!(v["schema_version"].as_u64(), Some(3 | 4)) {
         fields.push("facts_git");
-        chrono_harness::facts::git_declaration(v)?;
+        wire::evidence::<()>(
+            serde_json::json!({"operation":"validate-git-declaration","config":v}),
+        )?;
         if let Some(units) = v.get("execution_units") {
             fields.push("execution_units");
             validate_execution_units(units)?;
@@ -314,7 +306,9 @@ pub fn config(v: &Value) -> Result {
         }
     }
     if v["schema_version"] == 4 {
-        chrono_harness::prepared::declaration(v)?;
+        wire::evidence::<()>(
+            serde_json::json!({"operation":"validate-preparation-declaration","config":v}),
+        )?;
     } else {
         object(&v["canonical_check"], &["operation", "argv"], &[])?;
     }
@@ -453,7 +447,9 @@ pub fn config(v: &Value) -> Result {
 
 #[cfg(not(verus_keep_ghost))]
 fn validate_execution_units(v: &Value) -> Result {
-    chrono_harness::units::report_paths(&serde_json::json!({"execution_units":v}), None)?;
+    wire::evidence::<()>(
+        serde_json::json!({"operation":"report-paths","profile":{"execution_units":v}}),
+    )?;
     let fields = object(
         v,
         &[
@@ -747,16 +743,16 @@ pub fn judges(v: &Value) -> Result {
     common(v, &["migration_validator", "judges"])?;
     string(&v["migration_validator"])?;
     unique(&v["judges"], Some("id"))?;
-    let b: Vec<wire::Binding> =
-        serde_json::from_value(v["judges"].clone()).map_err(|e| e.to_string())?;
-    for j in &b {
-        path(&Value::from(j.executable.clone()))?;
-        if j.version.is_empty() {
+    for binding in array(&v["judges"])? {
+        path(&binding["executable"])?;
+        if string(&binding["version"])?.is_empty() {
             return Err("empty judge version".into());
         }
-        hash(&serde_json::to_value(&j.sha256).map_err(|e| e.to_string())?)?;
+        hash(&binding["sha256"])?;
     }
-    chrono_harness::full::schedule(&b)?;
+    wire::evidence::<()>(
+        serde_json::json!({"operation":"validate-schedule","bindings":v["judges"]}),
+    )?;
     Ok(())
 }
 #[cfg(not(verus_keep_ghost))]

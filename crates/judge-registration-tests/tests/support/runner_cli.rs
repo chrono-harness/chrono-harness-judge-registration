@@ -1,150 +1,15 @@
-use chrono_harness::{facts, wire::Request};
+use chrono_judge_registration::wire;
 use serde_json::{Value, json};
 use std::{
-    collections::BTreeMap,
+    fs,
     io::{BufRead, Write},
-    path::PathBuf,
-    process::ExitCode,
+    path::{Path, PathBuf},
+    process::{Command, ExitCode},
 };
-
-// The fixture runs against the modeled Git on its registered test PATH.
-// Only the operations consumed by registration belong in this protocol double.
-struct FactsFixture {
-    root: PathBuf,
-    base: Option<String>,
-    candidate: String,
-    config: String,
-    git: facts::Reader,
-}
-
 fn field<'a>(row: &'a Value, key: &str) -> Result<&'a str, String> {
     row[key]
         .as_str()
         .ok_or_else(|| format!("missing fixture field {key}"))
-}
-
-impl FactsFixture {
-    fn open(header: Value) -> Result<Self, String> {
-        match field(&header, "mode")? {
-            "request" => {
-                let request: Request =
-                    serde_json::from_value(header["request"].clone()).map_err(|e| e.to_string())?;
-                let git = facts::Reader::for_request(&request)?;
-                Ok(Self {
-                    root: request.candidate.root,
-                    base: Some(request.base.commit),
-                    candidate: request.candidate.commit,
-                    config: request.config_path,
-                    git,
-                })
-            }
-            mode @ ("observed" | "config") => {
-                let root = std::env::current_dir().map_err(|e| e.to_string())?;
-                let config = field(&header, "config")?.to_owned();
-                let candidate = field(&header, "candidate")?.to_owned();
-                let base: Option<String> =
-                    serde_json::from_value(header["base"].clone()).map_err(|e| e.to_string())?;
-                let git = if mode == "observed" {
-                    facts::Reader::from_observations(
-                        &root,
-                        &config,
-                        &candidate,
-                        &header["observations"],
-                    )?
-                } else {
-                    if base.is_none() {
-                        return Err("configured fixture requires two endpoints".into());
-                    }
-                    facts::Reader::for_config(&root, &config)?
-                };
-                Ok(Self {
-                    root,
-                    base,
-                    candidate,
-                    config,
-                    git,
-                })
-            }
-            mode => Err(format!("unexpected registration fixture mode {mode}")),
-        }
-    }
-    fn operation(&self, query: &Value) -> Result<Value, String> {
-        let endpoint = || match field(query, "endpoint")? {
-            "base" => self
-                .base
-                .as_deref()
-                .ok_or_else(|| "initial fixture has no base".into()),
-            "candidate" => Ok(self.candidate.as_str()),
-            other => Err(format!("unexpected fixture endpoint {other}")),
-        };
-        let root = &self.root;
-        let git = &self.git;
-        match field(query, "op")? {
-            "observation" => Ok(git.observation()),
-            "checkout-root" => {
-                let top = facts::utf8(git.git(root, &["rev-parse", "--show-toplevel"])?)?;
-                Ok(json!(
-                    std::fs::canonicalize(top.trim()).map_err(|e| e.to_string())?
-                ))
-            }
-            "verify-config" => {
-                git.verify_config(root, field(query, "candidate")?)?;
-                Ok(Value::Null)
-            }
-            "verify-tree" => Ok(json!(git.verify_oid(root, endpoint()?)?)),
-            "verify-commit" => Ok(json!(git.verify_oid(root, field(query, "commit")?)?)),
-            "parents" => Ok(json!(git.parents(root, field(query, "commit")?)?)),
-            "blob-bytes" => Ok(json!(git.blob(
-                root,
-                field(query, "commit")?,
-                field(query, "path")?
-            )?)),
-            "checkout-excluding" => {
-                let artifacts: Vec<&str> = serde::Deserialize::deserialize(&query["artifacts"])
-                    .map_err(|e| e.to_string())?;
-                Ok(json!(git.checkout_excluding(
-                    root,
-                    &self.candidate,
-                    &artifacts
-                )?))
-            }
-            "candidate-inventory" => {
-                let candidate = git.tree(root, &self.candidate)?;
-                let delta = self
-                    .base
-                    .as_ref()
-                    .map(|base| {
-                        git.tree(root, base)
-                            .map(|old| facts::delta(&old, &candidate))
-                    })
-                    .transpose()?;
-                let entries: BTreeMap<_, _> = candidate
-                    .into_iter()
-                    .map(|(path, file)| (path.text, json!({"kind":file.kind, "mode":file.mode})))
-                    .collect();
-                Ok(json!({"entries":entries, "delta":delta}))
-            }
-            "registry-snapshot" => {
-                let mut snap = git.registry_snapshot(root, endpoint()?, &self.config)?;
-                if root
-                    .join(".chrono-harness/state/mock-inconsistent-registry")
-                    .exists()
-                {
-                    snap.values.get_mut(&self.config).unwrap()["status"] = json!("forged");
-                }
-                let originals: BTreeMap<_, _> = snap
-                    .bytes
-                    .into_iter()
-                    .map(|(path, bytes)| String::from_utf8(bytes).map(|text| (path, text)))
-                    .collect::<Result<_, _>>()
-                    .map_err(|e| e.to_string())?;
-                Ok(
-                    json!({"values":snap.values,"originals":originals,"effective_path":snap.effective_path,"selection":snap.selection}),
-                )
-            }
-            op => Err(format!("unexpected registration fixture operation {op}")),
-        }
-    }
 }
 
 fn reply(out: &mut impl Write, value: Result<Value, String>) -> std::io::Result<()> {
@@ -153,29 +18,116 @@ fn reply(out: &mut impl Write, value: Result<Value, String>) -> std::io::Result<
     out.flush()
 }
 
-fn facts_session() -> Result<(), Box<dyn std::error::Error>> {
-    let mut frames = std::io::stdin().lock().lines();
-    let header = frames.next().ok_or("missing fixture header")??;
-    let mut out = std::io::stdout().lock();
-    let fixture = match FactsFixture::open(serde_json::from_str(&header)?) {
-        Ok(fixture) => fixture,
-        Err(error) => {
-            reply(&mut out, Err(error))?;
-            return Ok(());
+fn checked(root: &Path, path: &str) -> Result<PathBuf, String> {
+    let mut current = root.to_path_buf();
+    for component in Path::new(path).components() {
+        let std::path::Component::Normal(piece) = component else {
+            return Err("invalid fixture path".into());
+        };
+        current.push(piece);
+        if fs::symlink_metadata(&current).is_ok_and(|meta| meta.is_symlink()) {
+            return Err("symlink in fixture path".into());
         }
+    }
+    Ok(current)
+}
+
+fn facts_session() -> Result<(), Box<dyn std::error::Error>> {
+    let mut lines = std::io::stdin().lock().lines();
+    let open: Value = serde_json::from_str(&lines.next().ok_or("missing facts header")??)?;
+    let root = if open["mode"] == "request" {
+        PathBuf::from(field(&open["request"]["candidate"], "root")?)
+    } else {
+        std::env::current_dir()?
     };
-    reply(&mut out, Ok(json!({"bound":fixture.git.is_bound()})))?;
-    for frame in frames {
-        let query = serde_json::from_str(&frame?)?;
-        reply(&mut out, fixture.operation(&query))?;
+    let facts: Value = serde_json::from_slice(&fs::read(
+        root.join(".chrono-harness/state/fixture-facts.json"),
+    )?)?;
+    let bound = !facts["observation"].is_null();
+    let mut out = std::io::stdout().lock();
+    reply(&mut out, Ok(json!({"bound":bound})))?;
+    for line in lines {
+        let q: Value = serde_json::from_str(&line?)?;
+        let result = (|| {
+            let endpoint = || match field(&q, "endpoint")? {
+                "base" => Ok("base"),
+                "candidate" => Ok("candidate"),
+                _ => Err("invalid fixture endpoint".to_owned()),
+            };
+            match field(&q, "op")? {
+                "checkout-root" => Ok(json!(root)),
+                "candidate-inventory" => {
+                    Ok(json!({"entries":facts["entries"],"delta":facts["delta"]}))
+                }
+                "observation" => Ok(facts["observation"].clone()),
+                "verify-tree" => Ok(facts[endpoint()?]["tree"].clone()),
+                "verify-commit" => {
+                    let oid = field(&q, "commit")?;
+                    let ep = ["base", "candidate"]
+                        .into_iter()
+                        .find(|k| facts[*k]["commit"] == oid)
+                        .ok_or("unknown fixture commit")?;
+                    Ok(facts[ep]["tree"].clone())
+                }
+                "verify-config" => Ok(Value::Null),
+                "parents" => {
+                    let data = git(&root, &["cat-file", "commit", field(&q, "commit")?])?;
+                    Ok(json!(
+                        std::str::from_utf8(&data)
+                            .map_err(|e| e.to_string())?
+                            .lines()
+                            .take_while(|l| !l.is_empty())
+                            .filter_map(|l| l.strip_prefix("parent "))
+                            .collect::<Vec<_>>()
+                    ))
+                }
+                "blob-bytes" => Ok(json!(git(
+                    &root,
+                    &[
+                        "show",
+                        &format!("{}:{}", field(&q, "commit")?, field(&q, "path")?)
+                    ]
+                )?)),
+                "checkout-excluding" => Ok(facts["checkout"].clone()),
+                "registry-snapshot" => {
+                    let key = if endpoint()? == "base" {
+                        "before"
+                    } else {
+                        "after"
+                    };
+                    let mut snapshot = facts[key].clone();
+                    if root
+                        .join(".chrono-harness/state/mock-inconsistent-registry")
+                        .exists()
+                    {
+                        let effective = field(&snapshot, "effective_path")?.to_owned();
+                        snapshot["values"][effective]["status"] = json!("forged");
+                    }
+                    Ok(snapshot)
+                }
+                other => Err(format!("unexpected fixture Git operation {other}")),
+            }
+        })();
+        reply(&mut out, result)?;
     }
     Ok(())
 }
-
+fn git(root: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
+    let result = Command::new(env!("CHRONO_TEST_GIT"))
+        .arg("--no-replace-objects")
+        .arg("-C")
+        .arg(root)
+        .args(args)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if result.status.success() {
+        Ok(result.stdout)
+    } else {
+        Err(String::from_utf8_lossy(&result.stderr).into_owned())
+    }
+}
 fn retained_session() -> Result<(), Box<dyn std::error::Error>> {
-    use chrono_harness::retained_artifacts::{self, retention};
     let root = std::env::current_dir()?;
-    let _scope = retention::read_scope(&root)?;
     let mut out = std::io::stdout().lock();
     for frame in std::io::stdin().lock().lines() {
         let query: Value = serde_json::from_str(&frame?)?;
@@ -207,21 +159,29 @@ fn retained_session() -> Result<(), Box<dyn std::error::Error>> {
                     Ok(Value::String(relocated))
                 }
                 "retain-read" => {
-                    retention::read_guard(&root, path()?)?;
+                    checked(&root, path()?)?;
                     Ok(Value::Null)
                 }
-                "checked-path" => Ok(json!(chrono_harness::no_symlink_parents(&root, path()?)?)),
+                "checked-path" => Ok(json!(checked(&root, path()?)?)),
                 "artifact-identity" => {
-                    let transport: Option<chrono_harness::prepared::ArtifactTransport> =
-                        serde_json::from_value(query["transport"].clone())
-                            .map_err(|e| e.to_string())?;
-                    let (sha256, length) = retained_artifacts::identity(
-                        &root,
-                        &query["artifacts"],
-                        path()?,
-                        transport.as_ref(),
-                    )?;
-                    Ok(json!({"sha256":sha256,"length":length}))
+                    let transport = &query["transport"];
+                    let relative = path()?;
+                    let target = if transport.is_null() {
+                        relative.to_owned()
+                    } else {
+                        let suffix = relative
+                            .strip_prefix(field(transport, "source_directory")?)
+                            .ok_or("fixture source mismatch")?;
+                        format!("{}{suffix}", field(transport, "directory")?)
+                    };
+                    let bytes =
+                        std::fs::read(checked(&root, &target)?).map_err(|e| e.to_string())?;
+                    let digest = wire::sha256(&bytes);
+                    let original = &query["artifacts"][relative];
+                    if original["sha256"] != digest || original["length"] != bytes.len() {
+                        return Err("fixture original digest/length mismatch".into());
+                    }
+                    Ok(json!({"sha256":digest,"length":bytes.len()}))
                 }
                 op => Err(format!("unexpected fixture custody operation {op}")),
             }
@@ -286,27 +246,100 @@ fn compiler_fixture() -> Result<(), Box<dyn std::error::Error>> {
 
 fn evidence_session() -> Result<(), Box<dyn std::error::Error>> {
     let mut out = std::io::stdout().lock();
-    for frame in std::io::stdin().lock().lines() {
-        let query: Value = serde_json::from_str(&frame?)?;
-        let result = (|| {
-            if field(&query, "operation")? != "observe-record" {
-                return Err("unexpected fixture evidence operation".into());
+    for line in std::io::stdin().lock().lines() {
+        let query: Value = serde_json::from_str(&line?)?;
+        let result = (|| match field(&query, "operation")? {
+            "validate-request" | "validate-initial-request" => {
+                let mut request = query["request"].clone();
+                let id = request
+                    .as_object_mut()
+                    .ok_or("request object")?
+                    .remove("request_id")
+                    .ok_or("request id")?;
+                if wire::digest(&request)? != id {
+                    return Err("fixture: request identity mismatch".into());
+                }
+                Ok(Value::Null)
             }
-            let record = &query["record"];
-            let process = &record["process"];
-            if process["exit_code"] != 0 || !process["failure"].is_null() {
-                return Err("fixture process failed".into());
+            "report-paths" => {
+                let block = &query["profile"]["execution_units"];
+                let collection = field(block, "report_path")?;
+                let one = field(&block["units"]["one"], "report_path")?;
+                let two = field(&block["units"]["two"], "report_path")?;
+                let paths =
+                    [collection, one, two].map(|p| p.strip_prefix(".chrono-harness/state/"));
+                match paths {
+                    [Some("report.json"), _, _]
+                    | [_, Some("report.json"), _]
+                    | [Some("one.json"), Some("one.json"), _]
+                    | [Some("reports"), Some("reports/one.json"), _]
+                    | [Some("reports/all.json"), Some("reports"), _]
+                    | [_, Some("one.json"), Some("one.json")]
+                    | [_, Some("reports"), Some("reports/two.json")]
+                    | [_, Some("reports/one.json"), Some("reports")] => {
+                        Err("fixture rejects overlapping unit report paths".into())
+                    }
+                    [Some(_), Some(_), Some(_)] => Ok(Value::Null),
+                    _ => Err("unrecognized fixture report path scope".into()),
+                }
             }
-            // This fixture writer serializes each response canonically.
-            let matches =
-                process["stdout_sha256"] == chrono_harness::wire::digest(&record["response"])?;
-            Ok(json!({"record":record, "stdout_matches":matches}))
+            "credential-environment" => {
+                match &query["config"]["environment"]["credential_environment"] {
+                    names if names == &json!(["TOKEN"]) => Ok(names.clone()),
+                    names if names == &json!(["UNDECLARED"]) => {
+                        Err("invalid acquisition credential environment binding".into())
+                    }
+                    names if names.is_null() => Ok(json!([])),
+                    _ => Err("unexpected credentials fixture".into()),
+                }
+            }
+            "validate-schedule" if query["bindings"].is_array() => Ok(Value::Null),
+            "validate-git-declaration" if query["config"]["facts_git"]["tool"].is_string() => {
+                Ok(Value::Null)
+            }
+            "validate-preparation-declaration" if query["config"]["schema_version"] == 4 => {
+                Ok(Value::Null)
+            }
+            "validate-initial-profile"
+                if query["profile"]["schema"] == "chrono-initial-check/v1" =>
+            {
+                Ok(Value::Null)
+            }
+            "full-execution-units" if query["profile"]["execution_units"].is_object() => {
+                Ok(query["profile"]["execution_units"].clone())
+            }
+            "registry-identity" if query["entry"] == ".chrono-harness/platforms.json" => {
+                let entry = &query["entry"];
+                let platform = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
+                let target = &query["documents"][entry.as_str().unwrap()]["platforms"][&platform];
+                Ok(
+                    json!({"entry_path":entry,"effective_path":target,"selection":{"path":entry,"platform":platform,"config_path":target}}),
+                )
+            }
+            "artifact-directories" => Ok(json!(
+                query["config"]["artifacts"]
+                    .as_array()
+                    .ok_or("artifacts array")?
+                    .iter()
+                    .map(|r| r["path"].clone())
+                    .collect::<Vec<_>>()
+            )),
+            "observe-record" => {
+                let record = &query["record"];
+                let process = &record["process"];
+                if process["exit_code"] != 0 || !process["failure"].is_null() {
+                    return Err("fixture process failed".into());
+                }
+                Ok(
+                    json!({"record":record,"stdout_matches":process["stdout_sha256"]==wire::digest(&record["response"])?}),
+                )
+            }
+            op => Err(format!("unexpected fixture evidence operation {op}")),
         })();
         reply(&mut out, result)?;
     }
     Ok(())
 }
-
 fn main() -> ExitCode {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let result = match args.as_slice() {
@@ -314,7 +347,7 @@ fn main() -> ExitCode {
         [op] if op == "git-facts-v1" => facts_session(),
         [op] if op == "judge-evidence-v1" => evidence_session(),
         [op] if op == "retained-artifacts-v1" => retained_session(),
-        _ => return chrono_harness::cli_main(),
+        _ => Err("unexpected runner fixture argv".into()),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

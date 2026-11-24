@@ -15,5 +15,5 @@ jobs:
         with:
           version: 2026.11.12
           cache: false
-          install_args: http:verus http:chrono-test-git http:chrono-test-git-profile
+          install_args: http:verus http:chrono-test-git
       - run: VERUS="$(mise which verus)" ./check.sh

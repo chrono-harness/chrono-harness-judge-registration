@@ -1,6 +1,7 @@
 //! Registration declarations and retained inputs used by the project executor.
+use crate::collection::ArtifactTransport;
+use crate::wire::Request;
 use crate::{Registrations, execution, historical_git::InstalledGit, inputs, transition};
-use chrono_harness::{prepared::ArtifactTransport, wire::Request};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, io::Read, path::Path};

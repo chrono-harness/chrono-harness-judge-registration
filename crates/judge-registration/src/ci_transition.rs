@@ -1,9 +1,5 @@
 //! Scoped CI consumes only candidate execution tools, the conversion and selected retirements.
-use crate::{
-    Registrations, facts,
-    historical_git::{HistoricalGit, InstalledGit},
-    transition,
-};
+use crate::{Registrations, facts, historical_git::InstalledGit, transition};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
@@ -90,21 +86,18 @@ pub fn query(root: &Path, input: impl Read) -> Result<Value, String> {
     facts::full_oid(&base)?;
     facts::full_oid(&candidate)?;
     let installed = std::cell::OnceCell::new();
-    let legacy = facts::Reader::legacy();
-    let get_reader = || -> Result<&dyn HistoricalGit, String> {
-        if git.is_none() && matches!(mode, Mode::Schedule | Mode::FullSchedule) {
-            return Ok(&legacy);
-        }
-        let reader = installed.get_or_init(|| match &git {
+    let get_reader = || {
+        installed.get_or_init(|| match &git {
             Some(binding) => InstalledGit::observed(root, Some(&base), &candidate, &binding.config,
                 &json!({"git_facts":binding.git_facts,"environment":binding.git_facts["environment"]})),
+            None if matches!(mode, Mode::Schedule | Mode::FullSchedule) =>
+                InstalledGit::history(root,&base,&candidate),
             None => {
                 let reader = InstalledGit::configured(root, &base, &candidate, &config)?;
                 reader.query::<()>(json!({"op":"verify-config","candidate":candidate}))?;
                 Ok(reader)
             }
-        }).as_ref().map_err(Clone::clone)?;
-        Ok(reader)
+        }).as_ref().map_err(Clone::clone)
     };
     let result = (|| -> Result<Value, String> {
         let environment = match &mode {

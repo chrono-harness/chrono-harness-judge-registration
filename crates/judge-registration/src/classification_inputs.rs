@@ -1,9 +1,7 @@
 //! Resolve caller-selected classification documents using one request-bound Git reader.
-use crate::{
-    historical_git::{HistoricalGit, InstalledGit},
-    transition::installed_views,
-};
-use chrono_harness::{CommandSpec, wire::Request};
+use crate::runner_session;
+use crate::wire::Request;
+use crate::{historical_git::InstalledGit, transition::installed_views};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
@@ -33,10 +31,10 @@ pub fn documents(
                 "E_SEMANTIC_INPUT: invalid selected document {path}"
             ));
         }
-        chrono_harness::relative_path(path)?;
+        crate::schema::relative_path(path)?;
         let doc = match known.get(path) {
             Some(doc) => doc.clone(),
-            None => chrono_harness::decode(&read(path)?)
+            None => crate::wire::decode(&read(path)?)
                 .map_err(|error| format!("E_SEMANTIC_INPUT: {path}: {error}"))?,
         };
         docs.insert(path.clone(), doc);
@@ -53,20 +51,13 @@ fn prepare(req: &Request, reader: &InstalledGit, selector: &Path) -> Result<Valu
     if !selector.is_absolute() {
         return Err("E_PROTOCOL: classification selector must be an absolute path".into());
     }
-    let spec = CommandSpec {
-        program: selector
-            .to_str()
-            .ok_or("classification selector is not UTF-8")?
-            .into(),
-        args: vec!["plan-classification-v1".into()],
-        env: serde_json::from_value(req.observations["environment"]["effective"].clone())
-            .map_err(|e| e.to_string())?,
-        timeout_seconds: protocol["timeout_seconds"]
-            .as_u64()
-            .ok_or("invalid classification timeout")?,
-        output_limit_bytes: serde_json::from_value(protocol["stdout_limit_bytes"].clone())
-            .map_err(|e| e.to_string())?,
-    };
+    let env = serde_json::from_value(req.observations["environment"]["effective"].clone())
+        .map_err(|e| e.to_string())?;
+    let timeout = protocol["timeout_seconds"]
+        .as_u64()
+        .ok_or("invalid classification timeout")?;
+    let limit = serde_json::from_value(protocol["stdout_limit_bytes"].clone())
+        .map_err(|e| e.to_string())?;
     let input = json!({
         "base": base["endpoint"], "candidate":candidate["endpoint"], "delta":req.delta,
         "impact":req.impact,
@@ -75,11 +66,17 @@ fn prepare(req: &Request, reader: &InstalledGit, selector: &Path) -> Result<Valu
         "binding":{"base":req.base.commit,"candidate":req.candidate.commit,"candidate_tree":req.candidate.tree,
                    "registry_digest":req.registries.digest,"context_digest":req.context.sha256}
     });
-    let result = chrono_harness::run_process_observed(
+    let result: crate::transition::Process = runner_session::record(
         &req.candidate.root,
-        &spec,
-        &chrono_harness::wire::canonical(&input)?,
-        &chrono_harness::file_identity(selector)?.0,
+        selector
+            .to_str()
+            .ok_or("classification selector is not UTF-8")?,
+        &["plan-classification-v1".into()],
+        &env,
+        timeout,
+        limit,
+        &crate::inputs::file_identity(selector)?.0,
+        &crate::wire::canonical(&input)?,
     )?;
     if let Some(error) = result.failure {
         return Err(error);
@@ -91,7 +88,7 @@ fn prepare(req: &Request, reader: &InstalledGit, selector: &Path) -> Result<Valu
             result.stderr.trim_end().into()
         });
     }
-    let plan: Plan = chrono_harness::decode(&result.stdout_bytes)?;
+    let plan: Plan = crate::wire::decode(&result.stdout_bytes)?;
     let named: BTreeSet<_> = [&a, &b]
         .iter()
         .flat_map(|endpoint| endpoint.config()["semantic_fields"].as_array().unwrap())

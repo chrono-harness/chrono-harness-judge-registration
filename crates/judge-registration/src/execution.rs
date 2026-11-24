@@ -21,10 +21,8 @@ pub struct Bounds {
 }
 impl Bounds {
     fn valid(&self) -> bool {
-        chrono_harness::verified_limits::valid_execution_bounds(
-            self.timeout_seconds,
-            self.output_limit_bytes,
-        )
+        self.timeout_seconds > 0
+            && (1..=crate::PROJECTS_INPUT_LIMIT).contains(&self.output_limit_bytes)
     }
 }
 impl Plan {
@@ -94,7 +92,7 @@ impl Scheduling {
                 || claims
                     .outputs
                     .iter()
-                    .any(|p| chrono_harness::relative_path(p.trim_end_matches('/')).is_err())
+                    .any(|p| crate::schema::relative_path(p.trim_end_matches('/')).is_err())
             {
                 return Err(format!("E_SCHEDULING: invalid claims for {op}"));
             }
@@ -106,9 +104,9 @@ impl Scheduling {
         let b = &self.claims[b];
         a.resources.iter().any(|r| b.resources.contains(r))
             || a.outputs.iter().any(|x| {
-                b.outputs
-                    .iter()
-                    .any(|y| chrono_harness::units::overlap(x, y))
+                b.outputs.iter().any(|y| {
+                    std::path::Path::new(x).starts_with(y) || std::path::Path::new(y).starts_with(x)
+                })
             })
     }
 }
@@ -326,10 +324,10 @@ fn scoped_endpoint(input: impl std::io::Read, startup: bool) -> Result<Value, St
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
     struct Endpoint {
-        #[serde(deserialize_with = "chrono_harness::strict_json_value")]
+        #[serde(deserialize_with = "crate::wire::strict_value")]
         filemap: Value,
         projects: Box<serde_json::value::RawValue>,
-        #[serde(deserialize_with = "chrono_harness::strict_json_value")]
+        #[serde(deserialize_with = "crate::wire::strict_value")]
         artifacts: Value,
     }
     let Endpoint {
@@ -341,7 +339,7 @@ fn scoped_endpoint(input: impl std::io::Read, startup: bool) -> Result<Value, St
     if projects.get().len() > crate::PROJECTS_INPUT_LIMIT {
         return Err("E_PROTOCOL: request read/bound".into());
     }
-    let projects = chrono_harness::json(projects.get().as_bytes())?;
+    let projects = crate::wire::json(projects.get().as_bytes())?;
     if [&filemap, &projects]
         .iter()
         .any(|doc| !matches!(doc["schema_version"].as_u64(), Some(1 | 2)))
@@ -408,7 +406,7 @@ pub enum ExecutionView {
 
 impl ExecutionView {
     pub fn write(&self, input: &[u8], mut output: impl std::io::Write) -> Result<(), String> {
-        let projects = chrono_harness::json(input)?;
+        let projects = crate::wire::json(input)?;
         match self {
             Self::Methods => serde_json::to_writer(&mut output, &methods(&projects)?),
             Self::TestBindings => serde_json::to_writer(&mut output, &test_bindings(&projects)?),

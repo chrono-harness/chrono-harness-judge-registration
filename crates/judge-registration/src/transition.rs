@@ -1,14 +1,11 @@
 //! Finite candidate-owned decoders for explicitly named historical profiles.
-use crate::{
-    Registrations, execution,
-    historical_git::{HistoricalGit, InstalledGit},
-};
-use chrono_harness::{
-    CommandSpec, facts, json,
-    observation::{self, Tool},
-    run_process_observed, sha256,
-    wire::{self, Request},
-};
+use crate::facts;
+use crate::runner_session;
+use crate::wire::json;
+use crate::wire::sha256;
+use crate::wire::{self, Request};
+use crate::{Registrations, execution, historical_git::InstalledGit};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json as value};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -16,6 +13,34 @@ use std::{
     path::Path,
 };
 type Values = BTreeMap<String, Value>;
+/// Fields registration checks against the fixed migration declaration. The runner
+/// retains ownership of the rest of the record, including original launch evidence.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Process {
+    pub(crate) exit_code: i32,
+    pub(crate) failure: Option<String>,
+    executable: std::path::PathBuf,
+    sha256: String,
+    cwd: std::path::PathBuf,
+    argv: Vec<String>,
+    environment: BTreeMap<String, String>,
+    stdin_sha256: String,
+    pub(crate) stdout_bytes: Vec<u8>,
+    stdout_sha256: String,
+    stdout: String,
+    pub(crate) stderr: String,
+    #[serde(flatten)]
+    original: BTreeMap<String, Value>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Tool {
+    program: String,
+    path: std::path::PathBuf,
+    basename: String,
+    sha256: String,
+    version: Process,
+}
+
 enum Conversion<'a> {
     Original(&'a Value),
     Acquire(&'a dyn Fn(&Registrations, &Value) -> Result<Option<Value>, String>),
@@ -86,21 +111,9 @@ fn view_binding(
 }
 /// Rebuild the original registration view from current immutable endpoint
 /// data and retained conversion observations. This never invokes the decoder.
-pub fn validate_retained_view(
-    req: &Request,
-    reader: &facts::Reader,
-    declaration_root: &Path,
-    supplied: &Value,
-) -> Result<(), String> {
-    let base = reader.registry_snapshot(declaration_root, &req.base.commit, &req.config_path)?;
-    let candidate =
-        reader.registry_snapshot(declaration_root, &req.candidate.commit, &req.config_path)?;
-    validate_retained_snapshots(req, reader, declaration_root, supplied, base, candidate)
-}
-
 pub(crate) fn validate_retained_snapshots(
     req: &Request,
-    reader: &impl HistoricalGit,
+    reader: &InstalledGit<'_>,
     declaration_root: &Path,
     supplied: &Value,
     base: facts::RegistrySnapshot,
@@ -135,16 +148,10 @@ pub(crate) fn validate_retained_snapshots(
     }
     Ok(())
 }
-pub fn views_with_reader(
-    req: &Request,
-    reader: &facts::Reader,
-) -> Result<(Registrations, Registrations, Value), String> {
-    views_using_reports(req, reader, None)
-}
 pub(crate) fn installed_views(
     request: &Request,
     reader: &InstalledGit<'_>,
-    reports: Option<&dyn Fn(&[String]) -> Result<chrono_harness::units::FullManifest, String>>,
+    reports: Option<&dyn Fn(&[String]) -> Result<crate::collection::FullManifest, String>>,
 ) -> Result<(Registrations, Registrations, Value), String> {
     views_from_snapshots(
         request,
@@ -188,47 +195,12 @@ fn endpoint_reply(req: &Request, project: impl Fn(&Registrations) -> Value) -> V
     reply
 }
 
-/// Acquire only the declared historical decoder test's unit originals, and only
-/// if the fixed endpoint profiles actually require conversion. DELTA selection
-/// still belongs to FILEMAP/routes after registration interprets those endpoints.
-pub fn views_for_collection_inputs_with(
-    req: &Request,
-    reader: &facts::Reader,
-    reports: &dyn Fn(&[String]) -> Result<chrono_harness::units::FullManifest, String>,
-) -> Result<(Registrations, Registrations, Value), String> {
-    if !matches!(
-        req.scope,
-        Some(chrono_harness::units::Scope::Collect { .. })
-    ) {
-        return Err("collection report inputs require collection scope".into());
-    }
-    views_using_reports(req, reader, Some(reports))
-}
-fn views_using_reports(
-    req: &Request,
-    reader: &facts::Reader,
-    reports: Option<&dyn Fn(&[String]) -> Result<chrono_harness::units::FullManifest, String>>,
-) -> Result<(Registrations, Registrations, Value), String> {
-    let base_snapshot =
-        reader.registry_snapshot(&req.candidate.root, &req.base.commit, &req.config_path)?;
-    let candidate_snapshot =
-        reader.registry_snapshot(&req.candidate.root, &req.candidate.commit, &req.config_path)?;
-    views_from_snapshots(
-        req,
-        base_snapshot,
-        candidate_snapshot,
-        reports,
-        || Ok(reader),
-        true,
-    )
-}
-
-pub(crate) fn views_from_snapshots<'a, R: HistoricalGit + ?Sized + 'a>(
+pub(crate) fn views_from_snapshots<'a>(
     req: &Request,
     base_snapshot: facts::RegistrySnapshot,
     candidate_snapshot: facts::RegistrySnapshot,
-    reports: Option<&dyn Fn(&[String]) -> Result<chrono_harness::units::FullManifest, String>>,
-    reader: impl Fn() -> Result<&'a R, String>,
+    reports: Option<&dyn Fn(&[String]) -> Result<crate::collection::FullManifest, String>>,
+    reader: impl Fn() -> Result<&'a InstalledGit<'a>, String>,
     check_binding: bool,
 ) -> Result<(Registrations, Registrations, Value), String> {
     let selector_required =
@@ -280,13 +252,11 @@ pub(crate) fn views_from_snapshots<'a, R: HistoricalGit + ?Sized + 'a>(
     let acquire = |r: &Registrations, profile: &Value| {
         let originals = reports
             .map(|load| {
-                let block = chrono_harness::units::full_execution_units(r.config())?
+                let block = crate::collection::execution_units(r.config())?
                     .ok_or("full collection units missing")?;
-                let units =
-                    serde_json::from_value(block["units"].clone()).map_err(|e| e.to_string())?;
                 let test = format!("test:{}", profile["test"].as_str().ok_or("migration test")?);
                 let required =
-                    chrono_harness::units::required(&units, &[test].into_iter().collect());
+                    crate::collection::required(&block["units"], &[test].into_iter().collect())?;
                 if required.is_empty() {
                     return Err("E_COLLECTION_INPUT: migration test has no registered unit".into());
                 }
@@ -340,64 +310,12 @@ pub fn interpret(
     let closed = reader.finish();
     result.and_then(|value| closed.map(|_| value))
 }
-/// Reuse the caller's selected facts reader and retain its complete acquisition record.
-pub fn interpret_with_reader(
-    reader: &facts::Reader,
-    root: &Path,
-    base: &str,
-    candidate_oid: &str,
-    config: &str,
-    raw: Values,
-    candidate: Values,
-    env: &BTreeMap<String, String>,
-) -> Result<(Registrations, Registrations, Value), String> {
-    reader.verify_config(root, candidate_oid)?;
-    interpret_mode(
-        || Ok(reader),
-        root,
-        base,
-        candidate_oid,
-        config,
-        raw,
-        candidate,
-        env,
-        None,
-        None,
-        true,
-    )
-}
-/// Declaration scheduling shares profile matching but never launches a decoder
-/// or acquires its interpreter. Actual checks retain conversion admission.
-pub fn interpret_scheduling_with_reader(
-    reader: &facts::Reader,
-    root: &Path,
-    base: &str,
-    candidate_oid: &str,
-    config: &str,
-    raw: Values,
-    candidate: Values,
-) -> Result<(Registrations, Registrations, Value), String> {
-    reader.verify_config(root, candidate_oid)?;
-    interpret_mode(
-        || Ok(reader),
-        root,
-        base,
-        candidate_oid,
-        config,
-        raw,
-        candidate,
-        &BTreeMap::new(),
-        None,
-        None,
-        false,
-    )
-}
 fn retained_conversion(
     req: &Request,
     r: &Registrations,
-    reports: Option<&chrono_harness::units::FullManifest>,
+    reports: Option<&crate::collection::FullManifest>,
 ) -> Result<Option<Value>, String> {
-    let Some(chrono_harness::units::Scope::Collect { manifest }) = &req.scope else {
+    let Some(crate::wire::Scope::Collect { manifest }) = &req.scope else {
         return Ok(None);
     };
     crate::runner_session::Stream::with(
@@ -410,7 +328,7 @@ fn retained_conversion(
 fn read_retained_conversion(
     req: &Request,
     r: &Registrations,
-    reports: Option<&chrono_harness::units::FullManifest>,
+    reports: Option<&crate::collection::FullManifest>,
     manifest_path: &str,
     originals: &mut crate::runner_session::Stream,
 ) -> Result<Option<Value>, String> {
@@ -422,7 +340,7 @@ fn read_retained_conversion(
                 "operation":"read-bounded-text", "path":manifest_path,
                 "limit":limits["manifest_bytes"].as_u64().ok_or("manifest bound")?
             }))?;
-            chrono_harness::decode(text.as_bytes())?
+            crate::wire::decode(text.as_bytes())?
         }
     };
     if !matches!(
@@ -490,7 +408,7 @@ fn read_retained_conversion(
                 || original.context.sha256 != req.context.sha256
                 || original.runner.sha256 != req.runner.sha256
                 || original.scope
-                    != Some(chrono_harness::units::Scope::Unit {
+                    != Some(crate::wire::Scope::Unit {
                         unit: input.unit.clone(),
                     })
                 || original.observations["registry_bindings"]
@@ -527,8 +445,8 @@ fn read_retained_conversion(
     }
     Ok(Some(retained.unwrap_or(Value::Null)))
 }
-pub(crate) fn interpret_ci_documents<'a, R: HistoricalGit + ?Sized + 'a>(
-    reader: impl Fn() -> Result<&'a R, String>,
+pub(crate) fn interpret_ci_documents<'a>(
+    reader: impl Fn() -> Result<&'a InstalledGit<'a>, String>,
     root: &Path,
     base: &str,
     candidate_oid: &str,
@@ -552,8 +470,8 @@ pub(crate) fn interpret_ci_documents<'a, R: HistoricalGit + ?Sized + 'a>(
     )
 }
 
-fn interpret_mode<'a, R: HistoricalGit + ?Sized + 'a>(
-    get_reader: impl Fn() -> Result<&'a R, String>,
+fn interpret_mode<'a>(
+    get_reader: impl Fn() -> Result<&'a InstalledGit<'a>, String>,
     root: &Path,
     base: &str,
     candidate_oid: &str,
@@ -688,10 +606,11 @@ fn interpret_mode<'a, R: HistoricalGit + ?Sized + 'a>(
     let script_bytes = reader.blob(root, candidate_oid, script_path)?;
     let (tool, receipt) = if let Some(c) = retained {
         let tool: Tool = serde_json::from_value(c["tool"].clone()).map_err(|e| e.to_string())?;
-        let receipt: chrono_harness::ProcessResult =
+        let receipt: Process =
             serde_json::from_value(c["process"].clone()).map_err(|e| e.to_string())?;
-        observation::process_success(&tool.version)?;
-        observation::process_success(&receipt)?;
+        for process in [&tool.version, &receipt] {
+            wire::evidence::<()>(value!({"operation":"check-process","process":process}))?;
+        }
         let mut version_argv = vec![tool.path.to_str().ok_or("migration tool path")?.to_owned()];
         version_argv.extend(argv.clone());
         let mut invocation = vec![tool.path.to_str().ok_or("migration tool path")?.to_owned()];
@@ -751,13 +670,12 @@ fn interpret_mode<'a, R: HistoricalGit + ?Sized + 'a>(
     } else {
         let artifacts = facts::artifact_directories(new.config())?;
         let before = reader.checkout_excluding(root, candidate_oid, &artifacts)?;
-        let tool = observation::tool(
-            root,
-            t["program"].as_str().unwrap(),
-            &argv,
-            env,
-            30,
-            1048576,
+        let tool: Tool = runner_session::query(
+            "chrono-harness",
+            "observed-tool-v1",
+            Some(root),
+            &value!({"root":root,"program":t["program"],"version_argv":argv,"environment":env,
+                "timeout_seconds":30,"output_limit_bytes":1048576}),
         )?;
         if tool.version.exit_code != 0
             || tool.version.failure.is_some()
@@ -771,14 +689,16 @@ fn interpret_mode<'a, R: HistoricalGit + ?Sized + 'a>(
         if fs::read(root.join(script_path)).map_err(|e| e.to_string())? != script_bytes {
             return Err("E_MIGRATION: decoder differs from fixed candidate".into());
         }
-        let spec = CommandSpec {
-            program: tool.path.to_str().unwrap().into(),
-            args: method.argv.clone(),
-            env: env.clone(),
-            timeout_seconds: 30,
-            output_limit_bytes: 16 * 1024 * 1024,
-        };
-        let receipt = run_process_observed(root, &spec, &wire::canonical(&input)?, &tool.sha256)?;
+        let receipt: Process = runner_session::record(
+            root,
+            tool.path.to_str().ok_or("migration tool path")?,
+            &method.argv,
+            env,
+            30,
+            16 * 1024 * 1024,
+            &tool.sha256,
+            &wire::canonical(&input)?,
+        )?;
         if receipt.exit_code != 0 || receipt.failure.is_some() {
             return Err(format!(
                 "E_MIGRATION: exit {}: {}",

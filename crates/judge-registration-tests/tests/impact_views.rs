@@ -19,6 +19,12 @@ fn fixed(base: &Values, candidate: &Values) -> Result<Value, String> {
     impact_views::query(Path::new("."), query.to_string().as_bytes())
 }
 
+fn seal(request: &mut chrono_judge_registration::wire::Request) {
+    let mut payload = serde_json::to_value(&*request).unwrap();
+    payload.as_object_mut().unwrap().remove("request_id");
+    request.request_id = chrono_judge_registration::wire::digest(&payload).unwrap();
+}
+
 #[test]
 fn invalid_registration_cannot_be_interpreted_as_empty_impact() {
     let valid = values();
@@ -111,7 +117,7 @@ fn retained_environment_excludes_undeclared_entries_even_with_a_matching_digest(
         "candidate":{"inherited":{},"environment":{}}});
     let environments = |endpoints: &Value| {
         let evidence = json!({"schema":"chrono-effective-inputs/v1",
-            "identity":chrono_harness::wire::digest(endpoints).unwrap(), "endpoints":endpoints});
+            "identity":chrono_judge_registration::wire::digest(endpoints).unwrap(), "endpoints":endpoints});
         chrono_judge_registration::inputs::effective_environments(&evidence, &old, &new)
     };
     let [base, candidate] = environments(&endpoints).unwrap().unwrap();
@@ -127,7 +133,7 @@ fn retained_environment_excludes_undeclared_entries_even_with_a_matching_digest(
 
 #[test]
 fn workflow_views_bind_originals_and_preserve_retirement_failures_until_demanded() {
-    use chrono_harness::wire::{Request, Status};
+    use chrono_judge_registration::wire::{Request, Status};
     use chrono_registration_fixture::{PROJECTS, WORKFLOW};
     let base = values();
     let mut current = base.clone();
@@ -138,7 +144,8 @@ fn workflow_views_bind_originals_and_preserve_retirement_failures_until_demanded
     let base_id = "1".repeat(40);
     let head_id = "2".repeat(40);
     let context = "a".repeat(64);
-    let digest = chrono_harness::facts::registry_digest(&base, &current).unwrap();
+    let digest =
+        chrono_judge_registration::wire::digest(&json!({"base":base,"candidate":current})).unwrap();
     let mut request: Request = serde_json::from_value(json!({
         "protocol":"chrono-judge/v1","request_id":"","judge_id":"workflow","mode":"evaluate",
         "base":{"commit":base_id,"tree":base_id,"root":"."},
@@ -158,7 +165,7 @@ fn workflow_views_bind_originals_and_preserve_retirement_failures_until_demanded
         }),
     );
     request.prior_results.push(previous);
-    request.seal().unwrap();
+    seal(&mut request);
     let run = |request: &Request, replay| {
         let body = json!({"request":request,"replay":replay,
             "originals":[originals(&base),originals(&current)]});
@@ -186,10 +193,10 @@ fn workflow_views_bind_originals_and_preserve_retirement_failures_until_demanded
     );
     assert_eq!(full["effective_inputs"], json!({"Ok":null}));
     assert_eq!(run(&request, true).unwrap()["replayed"], true);
-    request.scope = Some(chrono_harness::units::Scope::Unit {
+    request.scope = Some(chrono_judge_registration::wire::Scope::Unit {
         unit: "example".into(),
     });
-    request.seal().unwrap();
+    seal(&mut request);
     assert!(run(&request, false).unwrap()["changes"].is_null());
     request.judge_id = "another".into();
     assert!(run(&request, true).unwrap_err().contains("identity"));
@@ -197,9 +204,10 @@ fn workflow_views_bind_originals_and_preserve_retirement_failures_until_demanded
 
 #[test]
 fn route_inputs_replay_the_checked_view_at_the_sealed_endpoints() {
-    use chrono_harness::wire::Request;
+    use chrono_judge_registration::wire::Request;
     let docs = values();
-    let registry = chrono_harness::facts::registry_digest(&docs, &docs).unwrap();
+    let registry =
+        chrono_judge_registration::wire::digest(&json!({"base":docs,"candidate":docs})).unwrap();
     let endpoint = json!({"commit":"1".repeat(40),"tree":"2".repeat(40),"root":"."});
     let context = "3".repeat(64);
     let mut request: Request=serde_json::from_value(json!({
@@ -209,7 +217,7 @@ fn route_inputs_replay_the_checked_view_at_the_sealed_endpoints() {
         "checkout":{"head":"1".repeat(40),"tracked":[],"untracked":[],"index_flags":[]},
         "runner":{"path":"runner","sha256":context,"version":"fixture"}
     })).unwrap();
-    request.seal().unwrap();
+    seal(&mut request);
     let view = json!({"binding":{"base":endpoint["commit"],"candidate":endpoint["commit"],"context":context,"registry":registry},
         "base":docs,"candidate":docs,"historical":{}});
     let mut body = json!({"request":request,"view":view,"selected":[]});
@@ -223,7 +231,7 @@ fn route_inputs_replay_the_checked_view_at_the_sealed_endpoints() {
     for path in [".", "relative/checkout", "/original/checkout"] {
         let mut located = request.clone();
         located.candidate.root = path.into();
-        located.seal().unwrap();
+        seal(&mut located);
         body["request"] = json!(located);
         assert_eq!(read(&body).unwrap()["request_id"], located.request_id);
     }
@@ -233,10 +241,10 @@ fn route_inputs_replay_the_checked_view_at_the_sealed_endpoints() {
     body["view"] = view.clone();
     body["request"]["scope"] = json!({"kind":"collect","manifest":"reports.json"});
     assert!(read(&body).unwrap_err().contains("request identity"));
-    request.scope = Some(chrono_harness::units::Scope::Collect {
+    request.scope = Some(chrono_judge_registration::wire::Scope::Collect {
         manifest: "reports.json".into(),
     });
-    request.seal().unwrap();
+    seal(&mut request);
     body["request"] = json!(request);
     assert!(
         read(&body)

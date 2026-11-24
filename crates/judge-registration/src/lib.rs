@@ -7,7 +7,11 @@ pub use schema::{ObjectFieldError, object_error_parts, reference_syntax, validat
 #[cfg(not(verus_keep_ghost))]
 pub mod classification_inputs;
 #[cfg(not(verus_keep_ghost))]
+pub mod collection;
+#[cfg(not(verus_keep_ghost))]
 pub mod execution;
+#[cfg(not(verus_keep_ghost))]
+pub mod facts;
 #[cfg(not(verus_keep_ghost))]
 mod historical_git;
 #[cfg(not(verus_keep_ghost))]
@@ -21,6 +25,8 @@ pub mod project_views;
 mod registrations;
 #[cfg(not(verus_keep_ghost))]
 mod runner_session;
+#[cfg(not(verus_keep_ghost))]
+pub mod wire;
 #[cfg(not(verus_keep_ghost))]
 pub use registrations::check_documents;
 #[cfg(not(verus_keep_ghost))]
@@ -51,9 +57,8 @@ pub mod worktree;
 #[cfg(not(verus_keep_ghost))]
 pub use transition::{
     ambiguity_repaired, classification_views, downstream_validator, filemap_views, interpret,
-    interpret_scheduling_with_reader, interpret_with_reader, replacements, retirement_declaration,
-    retirement_requests, reused_tools, validate_retained_view, validate_test_retirement, views,
-    views_for_collection_inputs_with, views_with_reader,
+    replacements, retirement_declaration, retirement_requests, reused_tools,
+    validate_test_retirement, views,
 };
 #[cfg(not(verus_keep_ghost))]
 pub use verified_nodes::NodeKind;
@@ -61,10 +66,13 @@ pub use verified_nodes::NodeKind;
 pub mod initial;
 mod schema;
 #[cfg(not(verus_keep_ghost))]
-use chrono_harness::{
-    facts, json, no_symlink_parents, sha256,
-    wire::{self, Finding, Request, Response, Status},
-};
+use crate::inputs::checked_path;
+#[cfg(not(verus_keep_ghost))]
+use crate::wire::json;
+#[cfg(not(verus_keep_ghost))]
+use crate::wire::sha256;
+#[cfg(not(verus_keep_ghost))]
+use crate::wire::{Finding, Request, Response, Status};
 #[cfg(not(verus_keep_ghost))]
 pub use registrations::{NodeDefinition, NodeView, Registrations};
 #[cfg(not(verus_keep_ghost))]
@@ -75,19 +83,6 @@ use std::{
     fs,
     path::Path,
 };
-/// A policy custodian consumes the committed artifact and file declarations.
-#[cfg(not(verus_keep_ghost))]
-pub fn read_custody_inputs(
-    config_path: &str,
-    mut read: impl FnMut(&str) -> Result<Vec<u8>>,
-) -> Result<(Value, Value)> {
-    let config = facts::selected_config_with(config_path, &mut read)?;
-    let path = worktree::custody_filemap_path(&config)?;
-    let filemap = chrono_harness::json(&read(path)?)?;
-    worktree::validate_custody_filemap(&filemap)?;
-    Ok((config, filemap))
-}
-
 /// Maximum input bytes for the bounded protocol and project binding queries.
 pub const PROJECTS_INPUT_LIMIT: usize = 64 * 1024 * 1024;
 
@@ -144,7 +139,7 @@ pub fn query_configuration_edges(input: impl std::io::Read) -> std::result::Resu
     #[derive(serde::Deserialize)]
     #[serde(deny_unknown_fields)]
     struct Query {
-        #[serde(deserialize_with = "chrono_harness::strict_json_value")]
+        #[serde(deserialize_with = "crate::wire::strict_value")]
         filemap: Value,
         effective_config: Option<String>,
     }
@@ -169,9 +164,7 @@ fn issue(
     reference: impl Into<String>,
     error: bool,
 ) {
-    wire::append_finding(
-        &mut r.status,
-        &mut r.findings,
+    r.add_finding(
         if error { Status::Error } else { Status::Fail },
         Finding {
             code: code.into(),
@@ -208,7 +201,7 @@ pub fn nonartifact_paths(config: &Value, paths: &[String]) -> Vec<String> {
 }
 
 #[cfg(not(verus_keep_ghost))]
-fn outside_artifacts(artifacts: &[&str], paths: &[String]) -> Vec<String> {
+fn outside_artifacts(artifacts: &[String], paths: &[String]) -> Vec<String> {
     paths
         .iter()
         .filter(|p| !artifacts.iter().any(|a| p.starts_with(a)))
@@ -234,7 +227,6 @@ fn evaluate(
     r: &mut Response,
     reader: &historical_git::InstalledGit<'_>,
 ) -> Result<()> {
-    use historical_git::HistoricalGit;
     req.validate()?;
     let root = &req.candidate.root;
     let actual_root: std::path::PathBuf = reader.query(value!({"op":"checkout-root"}))?;
@@ -323,7 +315,7 @@ fn evaluate(
         return Ok(());
     }
     for (p, original) in &base_snapshot.bytes {
-        let p = no_symlink_parents(&req.base.root, p)?;
+        let p = checked_path(&req.base.root, p)?;
         if fs::read(&p).map_err(|e| e.to_string())? != *original {
             issue(
                 r,
@@ -336,7 +328,7 @@ fn evaluate(
         }
     }
     for (p, original) in &candidate_snapshot.bytes {
-        let disk = fs::read(no_symlink_parents(root, p)?).map_err(|e| e.to_string())?;
+        let disk = fs::read(checked_path(root, p)?).map_err(|e| e.to_string())?;
         if &disk != original {
             issue(
                 r,
@@ -471,7 +463,7 @@ fn evaluate(
         );
     }
     for flag in &observed.index_flags {
-        if chrono_harness::verified_status::unsupported_index_flag(&flag.tag).is_some() {
+        if flag.hides_changes() {
             issue(
                 r,
                 "E_INPUT_UNSUPPORTED",
@@ -531,37 +523,18 @@ fn readiness(
     n: &Registrations,
     r: &mut Response,
 ) -> Result<()> {
-    chrono_harness::units::report_paths(
-        n.config(),
-        n.workflow()["integration"]["evidence"].as_str(),
-    )?;
-    if let Some(block) = chrono_harness::units::full_execution_units(n.config())? {
-        let units: BTreeMap<String, chrono_harness::units::Unit> =
-            serde_json::from_value(block["units"].clone()).map_err(|e| e.to_string())?;
+    if n.config().get("execution_units").is_some() {
+        wire::evidence::<()>(value!({"operation":"report-paths","profile":n.config(),
+            "evidence":n.workflow()["integration"]["evidence"].as_str()}))?;
+    }
+    if let Some(block) = crate::collection::execution_units(n.config())? {
         let plans = execution::plans(n.filemap())?;
-        let shared = serde_json::from_value(block["shared_operations"].clone())
-            .map_err(|e| e.to_string())?;
-        let mut operation_sets: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-        for (unit, definition) in &units {
-            for test in &definition.tests {
-                let plan = plans
-                    .get(test)
-                    .ok_or_else(|| format!("E_UNIT_ASSIGNMENT: unknown plan {test}"))?;
-                for operation in &plan.operations {
-                    operation_sets
-                        .entry(operation.clone())
-                        .or_default()
-                        .insert(unit.clone());
-                }
-            }
-        }
-        chrono_harness::units::assignments(
-            &units,
-            &plans.keys().cloned().collect(),
-            &shared,
-            &operation_sets,
-        )
-        .map_err(|e| format!("E_UNIT_ASSIGNMENT: {e}"))?;
+        crate::runner_session::query::<()>(
+            "chrono-judge-routes",
+            "check-unit-assignments-v1",
+            None,
+            &value!({"execution_units":block,"plans":plans}),
+        )?;
     }
     for (name, v) in [
         ("config", &n.config),
@@ -614,7 +587,7 @@ fn readiness(
         );
     }
     for j in n.judges["judges"].as_array().unwrap() {
-        let path = no_symlink_parents(root, j["executable"].as_str().unwrap())?;
+        let path = checked_path(root, j["executable"].as_str().unwrap())?;
         if j["sha256"].is_null()
             || fs::read(&path).ok().map(|v| sha256(&v)).as_deref() != j["sha256"].as_str()
         {
@@ -653,7 +626,7 @@ fn readiness(
         ),
     }
     for finding in input_closure_findings(n) {
-        wire::append_finding(&mut r.status, &mut r.findings, Status::Fail, finding);
+        r.add_finding(Status::Fail, finding);
     }
     input_coverage::validate(n, r);
     Ok(())
@@ -773,7 +746,7 @@ pub(crate) fn input_closure_findings(n: &Registrations) -> Vec<Finding> {
 
 #[cfg(not(verus_keep_ghost))]
 fn references(
-    reader: &impl historical_git::HistoricalGit,
+    reader: &historical_git::InstalledGit<'_>,
     root: &Path,
     candidate: &str,
     old: Option<&Registrations>,

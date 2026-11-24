@@ -1,34 +1,11 @@
 //! Fixed Git inputs used while interpreting historical registries.
 use crate::runner_session::Stream;
-use chrono_harness::{
-    facts::Reader,
-    wire::{Checkout, Delta, Request, Response},
-};
+use crate::wire::{Checkout, Delta, Request, Response};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use std::{cell::RefCell, collections::BTreeMap, path::Path};
 
 type Result<T> = std::result::Result<T, String>;
-
-pub(crate) trait HistoricalGit {
-    fn blob(&self, root: &Path, commit: &str, path: &str) -> Result<Vec<u8>>;
-    fn checkout_excluding(&self, root: &Path, commit: &str, artifacts: &[&str])
-    -> Result<Checkout>;
-}
-
-impl HistoricalGit for Reader {
-    fn blob(&self, root: &Path, commit: &str, path: &str) -> Result<Vec<u8>> {
-        Reader::blob(self, root, commit, path)
-    }
-    fn checkout_excluding(
-        &self,
-        root: &Path,
-        commit: &str,
-        artifacts: &[&str],
-    ) -> Result<Checkout> {
-        Reader::checkout_excluding(self, root, commit, artifacts)
-    }
-}
 
 pub(crate) struct InstalledGit<'a> {
     root: &'a Path,
@@ -76,6 +53,17 @@ impl<'a> InstalledGit<'a> {
             Some(!observations["git_facts"].is_null()),
             Some(root),
             json!({"mode":"observed","config":config,"base":base,"candidate":candidate,"observations":observations}),
+        )
+    }
+    pub(crate) fn history(root: &'a Path, base: &'a str, candidate: &'a str) -> Result<Self> {
+        Self::start(
+            root,
+            Some(base),
+            candidate,
+            "",
+            Some(false),
+            Some(root),
+            json!({"mode":"history"}),
         )
     }
     pub(crate) fn configured(
@@ -153,10 +141,7 @@ impl<'a> InstalledGit<'a> {
     pub(crate) fn inventory(&self) -> Result<Inventory> {
         self.query(json!({"op":"candidate-inventory"}))
     }
-    pub(crate) fn snapshot(
-        &self,
-        endpoint: &str,
-    ) -> Result<chrono_harness::facts::RegistrySnapshot> {
+    pub(crate) fn snapshot(&self, endpoint: &str) -> Result<crate::facts::RegistrySnapshot> {
         #[derive(serde::Deserialize)]
         struct Snapshot {
             values: BTreeMap<String, Value>,
@@ -190,18 +175,18 @@ impl<'a> InstalledGit<'a> {
         Ok(observation)
     }
 }
-impl HistoricalGit for InstalledGit<'_> {
-    fn blob(&self, root: &Path, commit: &str, path: &str) -> Result<Vec<u8>> {
+impl InstalledGit<'_> {
+    pub(crate) fn blob(&self, root: &Path, commit: &str, path: &str) -> Result<Vec<u8>> {
         self.endpoint(root, commit)?;
         self.stream
             .borrow_mut()
             .exchange(&json!({"op":"blob-bytes","commit":commit,"path":path}))
     }
-    fn checkout_excluding(
+    pub(crate) fn checkout_excluding(
         &self,
         root: &Path,
         commit: &str,
-        artifacts: &[&str],
+        artifacts: &[String],
     ) -> Result<Checkout> {
         if self.endpoint(root, commit)? != "candidate" {
             return Err("expected candidate checkout".into());

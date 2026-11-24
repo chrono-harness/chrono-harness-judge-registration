@@ -3,10 +3,13 @@ use super::schema;
 #[cfg(not(verus_keep_ghost))]
 use crate::Registrations;
 #[cfg(not(verus_keep_ghost))]
-use chrono_harness::{
-    facts, file_identity, relative_path, sha256,
-    wire::{self, Request},
-};
+use crate::facts;
+#[cfg(not(verus_keep_ghost))]
+use crate::schema::relative_path;
+#[cfg(not(verus_keep_ghost))]
+use crate::wire::sha256;
+#[cfg(not(verus_keep_ghost))]
+use crate::wire::{self, Request};
 #[cfg(not(verus_keep_ghost))]
 use serde_json::{Value, json};
 #[cfg(not(verus_keep_ghost))]
@@ -25,7 +28,67 @@ pub fn snapshot_schema_for(r: &Registrations) -> &'static str {
 }
 
 #[cfg(not(verus_keep_ghost))]
-pub use chrono_harness::input_file::observe_file;
+pub(crate) fn file_identity(path: &Path) -> Result<(String, u64), String> {
+    use sha2::{Digest, Sha256};
+    let regular = |metadata: std::fs::Metadata| {
+        if metadata.is_file() {
+            Ok(())
+        } else {
+            Err(format!("not a regular input file: {}", path.display()))
+        }
+    };
+    let io_error = |e: std::io::Error| format!("{}: {e}", path.display());
+    regular(path.metadata().map_err(io_error)?)?;
+    let mut input = std::fs::File::open(path).map_err(io_error)?;
+    regular(input.metadata().map_err(io_error)?)?;
+    let mut hash = Sha256::new();
+    let size = std::io::copy(&mut input, &mut hash).map_err(io_error)?;
+    Ok((format!("{:x}", hash.finalize()), size))
+}
+
+#[cfg(not(verus_keep_ghost))]
+pub(crate) fn checked_path(root: &Path, path: &str) -> Result<std::path::PathBuf, String> {
+    relative_path(path)?;
+    let mut prefix = root.to_path_buf();
+    for part in Path::new(path).components() {
+        prefix.push(part);
+        reject_link(&prefix)?;
+    }
+    Ok(prefix)
+}
+
+#[cfg(not(verus_keep_ghost))]
+fn reject_link(path: &Path) -> Result<bool, String> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_symlink() => {
+            Err(format!("E_INPUT_PATH: symlink input: {}", path.display()))
+        }
+        Ok(_) => Ok(true),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(format!("E_INPUT_PATH: {}: {e}", path.display())),
+    }
+}
+
+#[cfg(not(verus_keep_ghost))]
+pub fn observe_file(path: &Path) -> Result<Option<(String, u64)>, String> {
+    use std::path::Component;
+    let mut prefix = std::path::PathBuf::new();
+    for part in path.components() {
+        if matches!(part, Component::CurDir | Component::ParentDir) {
+            return Err(format!(
+                "E_INPUT_PATH: non-normal input path: {}",
+                path.display()
+            ));
+        }
+        prefix.push(part);
+        reject_link(&prefix)?;
+    }
+    if reject_link(path)? {
+        file_identity(path).map(Some)
+    } else {
+        Ok(None)
+    }
+}
 
 /// Report the registration policy needed to collect inputs at a fixed endpoint.
 #[cfg(not(verus_keep_ghost))]
@@ -38,12 +101,14 @@ pub fn input_profile(input: impl std::io::Read) -> Result<Value, String> {
     }
     let query: Query = serde_json::from_reader(input).map_err(|error| error.to_string())?;
     let credentials = if query.config["schema_version"] == 4 {
-        chrono_harness::prepared::credential_environment(&query.config)?
+        wire::evidence::<std::collections::BTreeSet<String>>(
+            json!({"operation":"credential-environment","config":query.config}),
+        )?
     } else {
         Default::default()
     };
     let units = if query.inspect_execution_units {
-        Some(chrono_harness::units::full_execution_units(&query.config)?.is_some())
+        Some(crate::collection::execution_units(&query.config)?.is_some())
     } else {
         None
     };
@@ -62,9 +127,7 @@ pub fn capture_plan(input: impl std::io::Read) -> Result<Value, String> {
     }
     let query: Query = serde_json::from_reader(input).map_err(|error| error.to_string())?;
     let endpoint = Registrations::load(&query.documents, &query.config)?;
-    let scope = query
-        .unit
-        .map(|unit| chrono_harness::units::Scope::Unit { unit });
+    let scope = query.unit.map(|unit| crate::wire::Scope::Unit { unit });
     Ok(serde_json::json!({
         "effective_config": endpoint.effective_config_path(),
         "selection": endpoint.selection(),
@@ -231,7 +294,7 @@ impl RetainedInputs<'_> {
     fn identity(
         &mut self,
         value: &Value,
-        originals: Option<(&Value, Option<&chrono_harness::prepared::ArtifactTransport>)>,
+        originals: Option<(&Value, Option<&crate::collection::ArtifactTransport>)>,
     ) -> Result<Option<(String, u64)>, String> {
         match retained_shape(value)? {
             Retained::Absent => Ok(None),
@@ -274,7 +337,9 @@ impl RetainedInputs<'_> {
 pub fn environment(config: &Value, snapshot: &Value) -> Result<BTreeMap<String, String>, String> {
     let mut out = BTreeMap::new();
     let credentials = if config["schema_version"] == 4 {
-        chrono_harness::prepared::credential_environment(config)?
+        wire::evidence::<std::collections::BTreeSet<String>>(
+            json!({"operation":"credential-environment","config":config}),
+        )?
     } else {
         Default::default()
     };
@@ -333,11 +398,11 @@ pub fn environment(config: &Value, snapshot: &Value) -> Result<BTreeMap<String, 
 #[cfg(not(verus_keep_ghost))]
 pub fn required_files(
     r: &Registrations,
-    scope: Option<&chrono_harness::units::Scope>,
+    scope: Option<&crate::wire::Scope>,
 ) -> Result<std::collections::BTreeSet<String>, String> {
     let selected = match scope {
-        Some(chrono_harness::units::Scope::Unit { unit }) => Some(assigned_plans(r, unit)?),
-        Some(chrono_harness::units::Scope::Collect { .. }) => Some(Default::default()),
+        Some(crate::wire::Scope::Unit { unit }) => Some(assigned_plans(r, unit)?),
+        Some(crate::wire::Scope::Collect { .. }) => Some(Default::default()),
         _ => None,
     };
     required_plan_files(r, selected.as_ref())
@@ -348,12 +413,11 @@ fn assigned_plans(
     r: &Registrations,
     unit: &str,
 ) -> Result<std::collections::BTreeSet<String>, String> {
-    use chrono_harness::units::{self, Unit};
-    let units: BTreeMap<String, Unit> =
-        serde_json::from_value(r.config()["execution_units"]["units"].clone())
-            .map_err(|e| format!("E_UNIT_ASSIGNMENT: {e}"))?;
     let plans = crate::execution::plans(r.filemap())?;
-    units::select(&units, &plans.keys().cloned().collect(), unit)
+    crate::wire::evidence(json!({
+        "operation":"unit-tests", "unit":unit, "units":r.config()["execution_units"]["units"],
+        "selected":plans.keys().collect::<Vec<_>>(),
+    }))
 }
 
 #[cfg(not(verus_keep_ghost))]
@@ -472,12 +536,10 @@ pub fn collection_required_files(
     new: &Registrations,
     selected: &std::collections::BTreeSet<String>,
 ) -> Result<std::collections::BTreeSet<String>, String> {
-    let units = chrono_harness::units::full_execution_units(new.config())?
+    let units = crate::collection::execution_units(new.config())?
         .ok_or("collection execution units missing")?;
-    let units: BTreeMap<String, chrono_harness::units::Unit> =
-        serde_json::from_value(units["units"].clone()).map_err(|e| e.to_string())?;
     let mut plans = std::collections::BTreeSet::new();
-    for unit in chrono_harness::units::required(&units, selected) {
+    for unit in crate::collection::required(&units["units"], selected)? {
         plans.extend(assigned_plans(new, &unit)?);
         if endpoint == "base"
             && old.config()["execution_units"]["units"]
@@ -500,12 +562,12 @@ pub fn endpoint_required_files(
     endpoint: &str,
     old: &Registrations,
     new: &Registrations,
-    scope: Option<&chrono_harness::units::Scope>,
+    scope: Option<&crate::wire::Scope>,
 ) -> Result<std::collections::BTreeSet<String>, String> {
     if endpoint != "base" {
         return required_files(new, scope);
     }
-    let Some(chrono_harness::units::Scope::Unit { unit }) = scope else {
+    let Some(crate::wire::Scope::Unit { unit }) = scope else {
         return required_files(old, scope);
     };
     // Candidate IDs need not exist historically. Project their declared plans
@@ -529,7 +591,7 @@ pub fn project_effective(
     evidence: &Value,
     old: &Registrations,
     new: &Registrations,
-    scope: Option<&chrono_harness::units::Scope>,
+    scope: Option<&crate::wire::Scope>,
 ) -> Result<Value, String> {
     if evidence.is_null() {
         return Ok(Value::Null);
@@ -561,10 +623,7 @@ pub fn validate(req: &Request, old: &Registrations, new: &Registrations) -> Resu
         old,
         new,
         None,
-        !matches!(
-            req.scope,
-            Some(chrono_harness::units::Scope::Collect { .. })
-        ),
+        !matches!(req.scope, Some(crate::wire::Scope::Collect { .. })),
     )
 }
 /// Routes is the selection owner. It checks collection coverage before preparing
@@ -595,7 +654,7 @@ pub fn validate_retained_at(
     new: &Registrations,
     artifacts: &Value,
     root: &Path,
-    transport: Option<&chrono_harness::prepared::ArtifactTransport>,
+    transport: Option<&crate::collection::ArtifactTransport>,
 ) -> Result<Value, String> {
     validate_inner(req, old, new, Some((artifacts, root, transport)), false)
 }
@@ -604,11 +663,7 @@ fn validate_inner(
     req: &Request,
     old: &Registrations,
     new: &Registrations,
-    artifacts: Option<(
-        &Value,
-        &Path,
-        Option<&chrono_harness::prepared::ArtifactTransport>,
-    )>,
+    artifacts: Option<(&Value, &Path, Option<&crate::collection::ArtifactTransport>)>,
     live: bool,
 ) -> Result<Value, String> {
     let mut store = RetainedInputs {
@@ -629,7 +684,7 @@ fn validate_endpoints(
     req: &Request,
     old: &Registrations,
     new: &Registrations,
-    originals: Option<(&Value, Option<&chrono_harness::prepared::ArtifactTransport>)>,
+    originals: Option<(&Value, Option<&crate::collection::ArtifactTransport>)>,
     live: bool,
     store: &mut RetainedInputs<'_>,
 ) -> Result<Value, String> {
@@ -771,10 +826,7 @@ fn validate_endpoints(
                 fact["presence"] = json!("present");
             }
             if required.contains(id)
-                || matches!(
-                    req.scope,
-                    Some(chrono_harness::units::Scope::Collect { .. })
-                )
+                || matches!(req.scope, Some(crate::wire::Scope::Collect { .. }))
             {
                 evidence.insert(id.to_string(), fact);
             }
