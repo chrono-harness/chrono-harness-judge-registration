@@ -39,15 +39,24 @@ fn v2_requires_language_for_every_project_and_script() {
                 .as_object_mut()
                 .unwrap()
                 .remove("language");
-            assert!(
-                validate(&missing)
-                    .unwrap_err()
-                    .contains("missing field language")
+            let entry = match collection {
+                "projects" => format!("project {}", missing[collection][index]["id"]),
+                _ => format!(
+                    "script {} at {}",
+                    missing[collection][index]["id"], missing[collection][index]["path"]
+                ),
+            };
+            assert_eq!(
+                validate(&missing).unwrap_err(),
+                format!("projects: {entry}: missing field language")
             );
             for bad in [Value::Null, json!(""), json!(["rust"]), json!(2)] {
                 let mut invalid = values.clone();
                 invalid[collection][index]["language"] = bad;
-                assert!(validate(&invalid).unwrap_err().contains("language"));
+                assert_eq!(
+                    validate(&invalid).unwrap_err(),
+                    format!("projects: {entry}: language: expected nonempty string")
+                );
             }
         }
     }
