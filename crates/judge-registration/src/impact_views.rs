@@ -234,10 +234,10 @@ fn project(root: &Path, query: Query) -> Result<Value, String> {
     {
         return Err("impact query requires its request checkout and matching scope".into());
     }
-    let reader = std::cell::OnceCell::new();
+    let installed = std::cell::OnceCell::new();
     let get_reader = || {
-        reader
-            .get_or_init(|| facts::Reader::for_request(&request))
+        installed
+            .get_or_init(|| crate::historical_git::InstalledGit::open(&request))
             .as_ref()
             .map_err(Clone::clone)
     };
@@ -306,8 +306,8 @@ fn project(root: &Path, query: Query) -> Result<Value, String> {
     };
     reply["request_id"] = json!(request.request_id);
     reply["commits"] = json!([request.base.commit, request.candidate.commit]);
-    if let Some(Ok(reader)) = reader.get() {
-        reply["git_facts"] = reader.observation();
+    if let Some(Ok(installed)) = installed.into_inner() {
+        reply["git_facts"] = installed.finish()?;
     }
     Ok(reply)
 }

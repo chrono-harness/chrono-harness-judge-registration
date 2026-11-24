@@ -1,5 +1,5 @@
 //! Finite candidate-owned decoders for explicitly named historical profiles.
-use crate::{Registrations, execution};
+use crate::{Registrations, execution, historical_git::HistoricalGit};
 use chrono_harness::{
     CommandSpec, facts, json,
     observation::{self, Tool},
@@ -199,12 +199,12 @@ fn views_using_reports(
     )
 }
 
-pub(crate) fn views_from_snapshots<'a>(
+pub(crate) fn views_from_snapshots<'a, R: HistoricalGit + ?Sized + 'a>(
     req: &Request,
     base_snapshot: facts::RegistrySnapshot,
     candidate_snapshot: facts::RegistrySnapshot,
     reports: Option<&dyn Fn(&[String]) -> Result<chrono_harness::units::FullManifest, String>>,
-    reader: impl Fn() -> Result<&'a facts::Reader, String>,
+    reader: impl Fn() -> Result<&'a R, String>,
     check_binding: bool,
 ) -> Result<(Registrations, Registrations, Value), String> {
     let selector_required =
@@ -501,8 +501,8 @@ pub(crate) fn interpret_ci_documents<'a>(
     )
 }
 
-fn interpret_mode<'a>(
-    get_reader: impl Fn() -> Result<&'a facts::Reader, String>,
+fn interpret_mode<'a, R: HistoricalGit + ?Sized + 'a>(
+    get_reader: impl Fn() -> Result<&'a R, String>,
     root: &Path,
     base: &str,
     candidate_oid: &str,
@@ -621,7 +621,7 @@ fn interpret_mode<'a>(
     let reader = get_reader()?;
     let raw_bytes: BTreeMap<_, _> = raw
         .keys()
-        .map(|p| Ok((p.clone(), reader.blob(root, base, p)?)))
+        .map(|path| Ok((path.clone(), reader.blob(root, base, path)?)))
         .collect::<Result<_, String>>()?;
     let mut input = if profile.get("from_versions").is_some() {
         value!({"schema":"chrono-historical-decode/v2","config_path":config,"original":raw,"original_bytes":raw_bytes,"candidate":candidate,"profile":profile})

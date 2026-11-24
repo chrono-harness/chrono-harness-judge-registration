@@ -70,3 +70,5 @@ stdout 返回 `previous`、`candidate`、本次额外产生的 `git_facts` 和 `
 `scoped-startup-v1` 接受与 `scoped-execution-v1` 相同的单端点输入，供启用启动消费合同的 CI 使用。`bindings` 保留原绑定表，`startup` 中的 `methods`、`plans`、`owners` 分别给出方法的所有者、工具和参数，计划的操作，以及测试的所有者。三项各有独立的成功或错误结果，CI 在实际需要该项时使用。
 
 仅当 scoped 调度声明变更时，CI 向 `scheduling-tests-v1` 提交两个端点。每端含 `scheduling` 和按测试 ID 给出的 `operations` 数组映射。全局调度参数变更时返回两端所有计划中的测试。局部资源或输出声明变更时返回直接受影响的测试，以及在任一端点上与变更操作争用资源或输出的测试。
+
+处理封存请求的影响、项目和工作流查询时，registration 使用 PATH 中已安装的 runner 打开一次 `git-facts-v1` 会话。会话按请求核对 Git 绑定，历史解码读取两个固定提交的原字节并检查候选检出。调用者会收到实际 Git 进程记录。完整 CI 收集只在历史解码需要读 Git 时打开会话。
