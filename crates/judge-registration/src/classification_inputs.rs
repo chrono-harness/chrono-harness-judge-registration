@@ -1,6 +1,7 @@
 //! Resolve caller-selected classification documents using one request-bound Git reader.
+use crate::wire::Request;
 use crate::{historical_git::InstalledGit, transition::installed_views};
-use chrono_harness::{CommandSpec, wire::Request};
+use chrono_harness::CommandSpec;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
@@ -75,7 +76,7 @@ fn prepare(req: &Request, reader: &InstalledGit, selector: &Path) -> Result<Valu
     let result = chrono_harness::run_process_observed(
         &req.candidate.root,
         &spec,
-        &chrono_harness::wire::canonical(&input)?,
+        &crate::wire::canonical(&input)?,
         &chrono_harness::file_identity(selector)?.0,
     )?;
     if let Some(error) = result.failure {

@@ -3,10 +3,9 @@ use super::schema;
 #[cfg(not(verus_keep_ghost))]
 use crate::Registrations;
 #[cfg(not(verus_keep_ghost))]
-use chrono_harness::{
-    facts, file_identity, relative_path, sha256,
-    wire::{self, Request},
-};
+use crate::wire::{self, Request};
+#[cfg(not(verus_keep_ghost))]
+use chrono_harness::{facts, file_identity, relative_path, sha256};
 #[cfg(not(verus_keep_ghost))]
 use serde_json::{Value, json};
 #[cfg(not(verus_keep_ghost))]
@@ -62,9 +61,7 @@ pub fn capture_plan(input: impl std::io::Read) -> Result<Value, String> {
     }
     let query: Query = serde_json::from_reader(input).map_err(|error| error.to_string())?;
     let endpoint = Registrations::load(&query.documents, &query.config)?;
-    let scope = query
-        .unit
-        .map(|unit| chrono_harness::units::Scope::Unit { unit });
+    let scope = query.unit.map(|unit| crate::wire::Scope::Unit { unit });
     Ok(serde_json::json!({
         "effective_config": endpoint.effective_config_path(),
         "selection": endpoint.selection(),
@@ -333,11 +330,11 @@ pub fn environment(config: &Value, snapshot: &Value) -> Result<BTreeMap<String, 
 #[cfg(not(verus_keep_ghost))]
 pub fn required_files(
     r: &Registrations,
-    scope: Option<&chrono_harness::units::Scope>,
+    scope: Option<&crate::wire::Scope>,
 ) -> Result<std::collections::BTreeSet<String>, String> {
     let selected = match scope {
-        Some(chrono_harness::units::Scope::Unit { unit }) => Some(assigned_plans(r, unit)?),
-        Some(chrono_harness::units::Scope::Collect { .. }) => Some(Default::default()),
+        Some(crate::wire::Scope::Unit { unit }) => Some(assigned_plans(r, unit)?),
+        Some(crate::wire::Scope::Collect { .. }) => Some(Default::default()),
         _ => None,
     };
     required_plan_files(r, selected.as_ref())
@@ -500,12 +497,12 @@ pub fn endpoint_required_files(
     endpoint: &str,
     old: &Registrations,
     new: &Registrations,
-    scope: Option<&chrono_harness::units::Scope>,
+    scope: Option<&crate::wire::Scope>,
 ) -> Result<std::collections::BTreeSet<String>, String> {
     if endpoint != "base" {
         return required_files(new, scope);
     }
-    let Some(chrono_harness::units::Scope::Unit { unit }) = scope else {
+    let Some(crate::wire::Scope::Unit { unit }) = scope else {
         return required_files(old, scope);
     };
     // Candidate IDs need not exist historically. Project their declared plans
@@ -529,7 +526,7 @@ pub fn project_effective(
     evidence: &Value,
     old: &Registrations,
     new: &Registrations,
-    scope: Option<&chrono_harness::units::Scope>,
+    scope: Option<&crate::wire::Scope>,
 ) -> Result<Value, String> {
     if evidence.is_null() {
         return Ok(Value::Null);
@@ -561,10 +558,7 @@ pub fn validate(req: &Request, old: &Registrations, new: &Registrations) -> Resu
         old,
         new,
         None,
-        !matches!(
-            req.scope,
-            Some(chrono_harness::units::Scope::Collect { .. })
-        ),
+        !matches!(req.scope, Some(crate::wire::Scope::Collect { .. })),
     )
 }
 /// Routes is the selection owner. It checks collection coverage before preparing
@@ -771,10 +765,7 @@ fn validate_endpoints(
                 fact["presence"] = json!("present");
             }
             if required.contains(id)
-                || matches!(
-                    req.scope,
-                    Some(chrono_harness::units::Scope::Collect { .. })
-                )
+                || matches!(req.scope, Some(crate::wire::Scope::Collect { .. }))
             {
                 evidence.insert(id.to_string(), fact);
             }

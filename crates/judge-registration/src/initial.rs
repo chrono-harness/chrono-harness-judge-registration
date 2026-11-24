@@ -1,14 +1,11 @@
 //! Initial inventory checks share reference policy without inventing prior history.
+use crate::wire::{self, Response, Status};
 use crate::{Registrations, Result, historical_git::InstalledGit, issue};
-use chrono_harness::{
-    facts,
-    initial::{Profile, Request},
-    no_symlink_parents, sha256,
-    wire::{self, Response, Status},
-};
+use chrono_harness::{facts, initial::Profile, no_symlink_parents, sha256};
 use serde_json::{Value, json};
 use std::fs;
 
+use crate::wire::InitialRequest as Request;
 pub fn judge(req: &Request) -> Response {
     let mut response = req.response(Status::Pass);
     let result = req.validate().and_then(|()| {
@@ -139,8 +136,10 @@ fn evaluate(req: &Request, response: &mut Response, reader: &InstalledGit) -> Re
     {
         return Err("initial candidate checkout is dirty or changed".into());
     }
-    if chrono_harness::verified_status::first_unsupported_index_flag(&observed.index_flags)
-        .is_some()
+    if observed
+        .index_flags
+        .iter()
+        .any(|flag| chrono_harness::verified_status::unsupported_index_flag(&flag.tag).is_some())
     {
         return Err("initial inventory rejects unsupported index flags".into());
     }

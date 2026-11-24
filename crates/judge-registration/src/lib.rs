@@ -25,6 +25,8 @@ mod registrations;
 #[cfg(not(verus_keep_ghost))]
 mod runner_session;
 #[cfg(not(verus_keep_ghost))]
+pub mod wire;
+#[cfg(not(verus_keep_ghost))]
 pub use registrations::check_documents;
 #[cfg(not(verus_keep_ghost))]
 pub mod ci_transition;
@@ -63,10 +65,9 @@ pub use verified_nodes::NodeKind;
 pub mod initial;
 mod schema;
 #[cfg(not(verus_keep_ghost))]
-use chrono_harness::{
-    facts, json, no_symlink_parents, sha256,
-    wire::{self, Finding, Request, Response, Status},
-};
+use crate::wire::{Finding, Request, Response, Status};
+#[cfg(not(verus_keep_ghost))]
+use chrono_harness::{facts, json, no_symlink_parents, sha256};
 #[cfg(not(verus_keep_ghost))]
 pub use registrations::{NodeDefinition, NodeView, Registrations};
 #[cfg(not(verus_keep_ghost))]
@@ -171,9 +172,7 @@ fn issue(
     reference: impl Into<String>,
     error: bool,
 ) {
-    wire::append_finding(
-        &mut r.status,
-        &mut r.findings,
+    r.add_finding(
         if error { Status::Error } else { Status::Fail },
         Finding {
             code: code.into(),
@@ -654,7 +653,7 @@ fn readiness(
         ),
     }
     for finding in input_closure_findings(n) {
-        wire::append_finding(&mut r.status, &mut r.findings, Status::Fail, finding);
+        r.add_finding(Status::Fail, finding);
     }
     input_coverage::validate(n, r);
     Ok(())

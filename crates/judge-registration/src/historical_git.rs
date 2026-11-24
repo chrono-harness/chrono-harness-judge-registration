@@ -1,6 +1,6 @@
 //! Fixed Git inputs used while interpreting historical registries.
 use crate::runner_session::Stream;
-use chrono_harness::wire::{Checkout, Delta, Request, Response};
+use crate::wire::{Checkout, Delta, Request, Response};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use std::{cell::RefCell, collections::BTreeMap, path::Path};

@@ -17,7 +17,11 @@ fn run(args: &[String]) -> u8 {
         println!("chrono-judge-registration {}", env!("CARGO_PKG_VERSION"));
         return 0;
     }
-    let initial = args == ["--protocol", chrono_harness::initial::PROTOCOL];
+    let initial = args
+        == [
+            "--protocol",
+            chrono_judge_registration::wire::INITIAL_PROTOCOL,
+        ];
     if !initial && args != ["--protocol", "chrono-judge/v1"] {
         chrono_harness::log_cli_error(&format!(
             "E_USAGE: execution-methods, test-owners or --protocol chrono-judge/v1 or chrono-initial-judge/v1"
@@ -48,7 +52,7 @@ fn run(args: &[String]) -> u8 {
             return 2;
         }
     };
-    match chrono_harness::wire::canonical(&response) {
+    match chrono_judge_registration::wire::canonical(&response) {
         Ok(bytes) => {
             if std::io::stdout().write_all(&bytes).is_err() {
                 return 2;

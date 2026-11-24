@@ -1,6 +1,6 @@
 //! Interpreted registration data used when workflow verifies a sealed request.
+use crate::wire::Request;
 use crate::{Registrations, execution, inputs, transition};
-use chrono_harness::wire::Request;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
@@ -101,7 +101,7 @@ pub(crate) fn project(
     current: &Registrations,
     view: Value,
 ) -> Value {
-    let unit = matches!(req.scope, Some(chrono_harness::units::Scope::Unit { .. }));
+    let unit = matches!(req.scope, Some(crate::wire::Scope::Unit { .. }));
     json!({
         "config":current.config(), "projects":current.projects(), "filemap":current.filemap(),
         "judges":current.judges(), "workflow":current.workflow(),

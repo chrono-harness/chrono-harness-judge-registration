@@ -1,10 +1,10 @@
 //! Finite candidate-owned decoders for explicitly named historical profiles.
+use crate::wire::{self, Request};
 use crate::{Registrations, execution, historical_git::InstalledGit};
 use chrono_harness::{
     CommandSpec, facts, json,
     observation::{self, Tool},
     run_process_observed, sha256,
-    wire::{self, Request},
 };
 use serde_json::{Value, json as value};
 use std::{
@@ -289,7 +289,7 @@ fn retained_conversion(
     r: &Registrations,
     reports: Option<&chrono_harness::units::FullManifest>,
 ) -> Result<Option<Value>, String> {
-    let Some(chrono_harness::units::Scope::Collect { manifest }) = &req.scope else {
+    let Some(crate::wire::Scope::Collect { manifest }) = &req.scope else {
         return Ok(None);
     };
     crate::runner_session::Stream::with(
@@ -382,7 +382,7 @@ fn read_retained_conversion(
                 || original.context.sha256 != req.context.sha256
                 || original.runner.sha256 != req.runner.sha256
                 || original.scope
-                    != Some(chrono_harness::units::Scope::Unit {
+                    != Some(crate::wire::Scope::Unit {
                         unit: input.unit.clone(),
                     })
                 || original.observations["registry_bindings"]

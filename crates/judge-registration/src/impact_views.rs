@@ -23,24 +23,24 @@ enum Operation {
     },
     #[serde(skip)]
     Projects {
-        request: chrono_harness::wire::Request,
+        request: crate::wire::Request,
         validate_inputs: bool,
     },
     #[serde(skip)]
     Workflow {
-        request: chrono_harness::wire::Request,
+        request: crate::wire::Request,
         #[serde(default)]
         replay: bool,
     },
     Request {
-        request: chrono_harness::wire::Request,
+        request: crate::wire::Request,
     },
     CiCollection {
-        request: chrono_harness::wire::Request,
+        request: crate::wire::Request,
         migration: Option<MigrationInputs>,
     },
     Collection {
-        request: chrono_harness::wire::Request,
+        request: crate::wire::Request,
         migration: Option<MigrationInputs>,
     },
 }
@@ -145,7 +145,7 @@ pub fn query(root: &Path, input: impl Read) -> Result<Value, String> {
 
 pub(crate) fn workflow(
     root: &Path,
-    request: chrono_harness::wire::Request,
+    request: crate::wire::Request,
     replay: bool,
     originals: [Documents; 2],
 ) -> Result<Value, String> {
@@ -160,7 +160,7 @@ pub(crate) fn workflow(
 
 pub(crate) fn projects(
     root: &Path,
-    request: chrono_harness::wire::Request,
+    request: crate::wire::Request,
     originals: [Documents; 2],
     validate_inputs: bool,
 ) -> Result<Value, String> {
@@ -241,11 +241,7 @@ fn project(root: &Path, query: Query) -> Result<Value, String> {
     };
     request.validate()?;
     if root != request.candidate.root
-        || (collection
-            && !matches!(
-                request.scope,
-                Some(chrono_harness::units::Scope::Collect { .. })
-            ))
+        || (collection && !matches!(request.scope, Some(crate::wire::Scope::Collect { .. })))
     {
         return Err("impact query requires its request checkout and matching scope".into());
     }

@@ -91,7 +91,9 @@ version = "0.1.0"
 dependencies = [
  "chrono-harness",
  "serde",
+ "serde_jcs",
  "serde_json",
+ "sha2",
  "time",
  "vstd",
 ]

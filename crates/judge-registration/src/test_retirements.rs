@@ -1,7 +1,8 @@
 //! Resolve only the test retirements requested by a planner.
+use crate::wire::Request;
 use crate::{Registrations, downstream_validator, validate_test_retirement};
 use crate::{historical_git::InstalledGit, transition::installed_views};
-use chrono_harness::{units, wire::Request};
+use chrono_harness::units;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, io::Read, path::Path};
@@ -61,7 +62,7 @@ pub fn query(root: &Path, input: impl Read) -> Result<Value, String> {
         }
         Endpoints::Collection { request, migration } => {
             if request.candidate.root != root
-                || !matches!(request.scope, Some(units::Scope::Collect { .. }))
+                || !matches!(request.scope, Some(crate::wire::Scope::Collect { .. }))
             {
                 return Err(
                     "route collection requires this checkout and a collection scope".into(),

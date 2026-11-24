@@ -41,7 +41,9 @@ pub fn validate_reference_syntax(forms: &Vec<source_continuity::ReferenceSyntax>
 
 // Strict SPEC §3 structure. Reference/activation policy is evaluated separately.
 #[cfg(not(verus_keep_ghost))]
-use chrono_harness::{relative_path, wire};
+use crate::wire;
+#[cfg(not(verus_keep_ghost))]
+use chrono_harness::relative_path;
 #[cfg(not(verus_keep_ghost))]
 use serde_json::{Map, Value};
 #[cfg(not(verus_keep_ghost))]
@@ -709,7 +711,7 @@ pub fn judges(v: &Value) -> Result {
     common(v, &["migration_validator", "judges"])?;
     string(&v["migration_validator"])?;
     unique(&v["judges"], Some("id"))?;
-    let b: Vec<wire::Binding> =
+    let b: Vec<chrono_harness::wire::Binding> =
         serde_json::from_value(v["judges"].clone()).map_err(|e| e.to_string())?;
     for j in &b {
         path(&Value::from(j.executable.clone()))?;

@@ -1,6 +1,6 @@
 //! Explicit domain coverage; it validates declarations, never discovers reads.
+use crate::wire::Response;
 use crate::{NodeKind, Registrations, issue, schema};
-use chrono_harness::wire::Response;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 

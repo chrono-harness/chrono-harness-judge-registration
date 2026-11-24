@@ -1,6 +1,6 @@
 //! Registration-owned inputs for the route planner's native judge protocol.
+use crate::wire::{Request, Scope};
 use crate::{Registrations, execution, historical_git::InstalledGit, inputs, transition};
-use chrono_harness::{units::Scope, wire::Request};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{collections::BTreeSet, io::Read};
