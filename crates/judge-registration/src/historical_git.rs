@@ -1,12 +1,13 @@
 //! Fixed Git inputs used while interpreting historical registries.
 use chrono_harness::{
     facts::Reader,
-    wire::{Checkout, Request},
+    wire::{Checkout, Delta, Request, Response},
 };
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::{
     cell::RefCell,
+    collections::BTreeMap,
     io::{BufRead, BufReader, Write},
     path::Path,
     process::{Child, ChildStdin, ChildStdout, Command, Stdio},
@@ -35,9 +36,23 @@ impl HistoricalGit for Reader {
 }
 
 pub(crate) struct InstalledGit<'a> {
-    request: &'a Request,
+    root: &'a Path,
+    base: Option<&'a str>,
+    candidate: &'a str,
+    config: &'a str,
     stream: RefCell<Stream>,
 }
+#[derive(serde::Deserialize)]
+pub(crate) struct Entry {
+    pub(crate) kind: String,
+    pub(crate) mode: String,
+}
+#[derive(serde::Deserialize)]
+pub(crate) struct Inventory {
+    pub(crate) entries: BTreeMap<String, Entry>,
+    pub(crate) delta: Option<Vec<Delta>>,
+}
+
 struct Stream {
     child: Child,
     input: Option<ChildStdin>,
@@ -83,7 +98,47 @@ impl Drop for Stream {
 }
 impl<'a> InstalledGit<'a> {
     pub(crate) fn open(request: &'a Request) -> Result<Self> {
-        let mut child = Command::new("chrono-harness")
+        Self::start(
+            &request.candidate.root,
+            Some(&request.base.commit),
+            &request.candidate.commit,
+            &request.config_path,
+            &request.observations,
+            None,
+            json!({"mode":"request","request":request}),
+        )
+    }
+    pub(crate) fn observed(
+        root: &'a Path,
+        base: Option<&'a str>,
+        candidate: &'a str,
+        config: &'a str,
+        observations: &Value,
+    ) -> Result<Self> {
+        Self::start(
+            root,
+            base,
+            candidate,
+            config,
+            observations,
+            Some(root),
+            json!({"mode":"observed","config":config,"base":base,"candidate":candidate,"observations":observations}),
+        )
+    }
+    fn start(
+        root: &'a Path,
+        base: Option<&'a str>,
+        candidate: &'a str,
+        config: &'a str,
+        observations: &Value,
+        cwd: Option<&Path>,
+        opening: Value,
+    ) -> Result<Self> {
+        let mut command = Command::new("chrono-harness");
+        if let Some(cwd) = cwd {
+            command.current_dir(cwd);
+        }
+        let mut child = command
             .arg("git-facts-v1")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -99,26 +154,65 @@ impl<'a> InstalledGit<'a> {
         struct Open {
             bound: bool,
         }
-        let open: Open = stream.exchange(&json!({"mode":"request","request":request}))?;
-        if open.bound == request.observations["git_facts"].is_null() {
+        let open: Open = stream.exchange(&opening)?;
+        if open.bound == observations["git_facts"].is_null() {
             return Err("E_GIT_FACTS: session binding differs from request".into());
         }
         Ok(Self {
-            request,
+            root,
+            base,
+            candidate,
+            config,
             stream: RefCell::new(stream),
         })
     }
     fn endpoint(&self, root: &Path, commit: &str) -> Result<&'static str> {
-        if root != self.request.candidate.root {
+        if root != self.root {
             return Err("Git facts checkout differs from request".into());
         }
-        if commit == self.request.candidate.commit {
+        if commit == self.candidate {
             return Ok("candidate");
         }
-        if commit == self.request.base.commit {
+        if Some(commit) == self.base {
             return Ok("base");
         }
         Err("Git facts commit differs from request".into())
+    }
+    pub(crate) fn query<T: DeserializeOwned>(&self, op: Value) -> Result<T> {
+        self.stream.borrow_mut().exchange(&op)
+    }
+    pub(crate) fn inventory(&self) -> Result<Inventory> {
+        self.query(json!({"op":"candidate-inventory"}))
+    }
+    pub(crate) fn snapshot(
+        &self,
+        endpoint: &str,
+    ) -> Result<chrono_harness::facts::RegistrySnapshot> {
+        #[derive(serde::Deserialize)]
+        struct Snapshot {
+            values: BTreeMap<String, Value>,
+            originals: BTreeMap<String, String>,
+            effective_path: String,
+            selection: Option<Value>,
+        }
+        let row: Snapshot = self.query(json!({"op":"registry-snapshot","endpoint":endpoint}))?;
+        let snapshot = crate::impact_views::snapshot(self.config, row.originals)?;
+        if snapshot.values != row.values
+            || snapshot.effective_path != row.effective_path
+            || snapshot.selection != row.selection
+        {
+            return Err(
+                "E_SNAPSHOT_IDENTITY: original registry and decoded snapshot differ".into(),
+            );
+        }
+        Ok(snapshot)
+    }
+    pub(crate) fn record(self, response: &mut Response) -> Result<()> {
+        let observation = self.finish()?;
+        if !observation.is_null() {
+            response.outputs.insert("git_facts".into(), observation);
+        }
+        Ok(())
     }
     pub(crate) fn finish(self) -> Result<Value> {
         let mut stream = self.stream.into_inner();

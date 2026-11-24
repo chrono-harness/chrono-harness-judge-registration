@@ -52,7 +52,10 @@ struct Query {
     originals: [Documents; 2],
 }
 
-fn snapshot(config: &str, documents: Documents) -> Result<facts::RegistrySnapshot, String> {
+pub(crate) fn snapshot(
+    config: &str,
+    documents: Documents,
+) -> Result<facts::RegistrySnapshot, String> {
     let values: BTreeMap<_, _> = documents
         .iter()
         .map(|(path, original)| {

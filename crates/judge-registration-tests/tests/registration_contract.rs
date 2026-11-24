@@ -1564,6 +1564,23 @@ fn ignored_untracked_staged_and_wrong_checkout_fail() {
     }
 }
 #[test]
+fn inventory_rejects_decoded_values_that_do_not_match_the_original_bytes() {
+    let h = Host::new();
+    let state = h.root().join(".chrono-harness/state");
+    fs::create_dir_all(&state).unwrap();
+    fs::write(state.join("mock-inconsistent-registry"), b"").unwrap();
+    let (exit, report) = h.run();
+    assert_eq!(exit, 2, "{report:#}");
+    let findings = report["judges"][0]["response"]["findings"]
+        .as_array()
+        .unwrap();
+    assert!(
+        findings.iter().any(|f| f["message"]
+            == "E_SNAPSHOT_IDENTITY: original registry and decoded snapshot differ"),
+        "{findings:#?}"
+    );
+}
+#[test]
 fn context_and_config_identity_mismatch() {
     let h = Host::new();
     let mut c = h.context();
