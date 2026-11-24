@@ -611,6 +611,20 @@ fn initial_inventory_rejects_dirty_hidden_and_wrong_checkouts() {
 }
 
 #[test]
+fn initial_inventory_reads_its_pinned_installed_image() {
+    let host = initial_host();
+    let installed = TempDir::new().unwrap();
+    let name = "chrono-judge-registration";
+    let alias = host.root().join(".chrono-harness/bin").join(name);
+    let image = installed.path().join(name);
+    fs::rename(&alias, &image).unwrap();
+    std::os::unix::fs::symlink(&image, &alias).unwrap();
+    let (exit, response) = initial_run(&host);
+    assert_eq!(exit, 0, "{response}");
+    assert_eq!(response["status"], "pass");
+}
+
+#[test]
 fn explicit_initial_inventory_runs_candidate_judge_without_a_delta_or_activation_claim() {
     let h = initial_host();
     let (exit, r) = initial_run(&h);
