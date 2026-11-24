@@ -59,19 +59,16 @@ fn canonical_declarations_check_each_prefix_and_explicit_base() {
 }
 }
 
-// Exercise the public adapter using the real source owner's canonical-path check.
+// Exercise the registration adapter with the installed protocol double.
 #[cfg(not(verus_keep_ghost))]
 #[test]
 fn decoded_reference_declarations_use_the_real_source_file_name() {
-    use chrono_harness::verified_verifier::sources::continuity::ReferenceSyntax;
     let check = |file: &str, before: &str, after: &str, base: u8, count: usize| {
         let form = serde_json::json!({
             "file":file, "before":before, "after":after, "trailing":"",
             "suffix_before":"", "suffix_after":"", "base":base
         });
-        let forms: Vec<ReferenceSyntax> =
-            serde_json::from_value(serde_json::json!(vec![form; count])).unwrap();
-        chrono_judge_registration::validate_reference_syntax(&forms)
+        chrono_judge_registration::validate_reference_syntax(&serde_json::json!(vec![form; count]))
     };
     assert!(check("x", "\"", "\"", 0, 1).is_ok());
     assert!(check("x", "/", "/", 2, 250).is_ok());

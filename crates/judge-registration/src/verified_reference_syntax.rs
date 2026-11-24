@@ -11,6 +11,23 @@ pub trait ReferenceDeclaration {
         ensures self.fields_view() == (out.0, out.1@, out.2@, out.3);
 }
 
+pub struct ReferenceFields {
+    pub canonical: bool,
+    pub before: String,
+    pub after: String,
+    pub base: u8,
+}
+
+impl ReferenceDeclaration for ReferenceFields {
+    open spec fn fields_view(&self) -> (bool, Seq<char>, Seq<char>, u8) {
+        (self.canonical, self.before@, self.after@, self.base)
+    }
+
+    fn fields(&self) -> (out: (bool, &str, &str, u8)) {
+        (self.canonical, self.before.as_str(), self.after.as_str(), self.base)
+    }
+}
+
 pub open spec fn prefix_valid(text: Seq<char>, base: u8) -> bool {
     let bytes = vstd::utf8::encode_utf8(text);
     bytes.len() > 0 && (bytes.last() == 34 || (base == 2 && bytes.last() == 47))

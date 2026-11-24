@@ -1,42 +1,55 @@
 #![allow(unexpected_cfgs)]
-#[cfg(verus_keep_ghost)]
-use super::source_verifier::sources::{self as source_policy, continuity as source_continuity};
-#[cfg(not(verus_keep_ghost))]
-use chrono_harness::verified_verifier::sources::{
-    self as source_policy, continuity as source_continuity,
-};
-#[cfg(not(verus_keep_ghost))]
-use vstd::prelude::verus;
-#[cfg(verus_keep_ghost)]
-use vstd::prelude::*;
-
 #[path = "verified_object_fields.rs"]
 mod fields;
 pub use fields::*;
 
 #[path = "verified_reference_syntax.rs"]
 pub mod reference_syntax;
-use reference_syntax::ReferenceDeclaration;
-
-verus! {
-impl ReferenceDeclaration for source_continuity::ReferenceSyntax {
-    open spec fn fields_view(&self) -> (bool, Seq<char>, Seq<char>, u8) {
-        (source_policy::canonical_source_path(vstd::utf8::encode_utf8(self.file@)),
-            self.before@, self.after@, self.base)
-    }
-
-    fn fields(&self) -> (out: (bool, &str, &str, u8)) {
-        (source_policy::canonical_source_name(self.file.as_str()),
-            self.before.as_str(), self.after.as_str(), self.base)
-    }
+#[cfg(not(verus_keep_ghost))]
+fn compiler_query<T: serde::de::DeserializeOwned>(request: &Value) -> Result<T> {
+    crate::runner_session::query("chrono-harness", "compiler-output-v1", None, request)
 }
 
-pub fn validate_reference_syntax(forms: &Vec<source_continuity::ReferenceSyntax>) -> (out: std::result::Result<(), String>)
-    ensures out.is_ok() == reference_syntax::reference_declarations_valid(forms@),
-        match out { Err(error) => error@ == "E_SOURCE_CONTINUITY: invalid reference syntax declaration"@, Ok(()) => true },
-{
-    reference_syntax::validate_reference_syntax(forms.as_slice())
-}
+#[cfg(not(verus_keep_ghost))]
+pub fn validate_reference_syntax(declaration: &Value) -> Result {
+    use reference_syntax::ReferenceFields;
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Reference {
+        file: String,
+        before: String,
+        after: String,
+        #[serde(rename = "trailing")]
+        _trailing: String,
+        #[serde(rename = "suffix_before")]
+        _suffix_before: String,
+        #[serde(rename = "suffix_after")]
+        _suffix_after: String,
+        base: u8,
+    }
+    let forms: Vec<Reference> =
+        serde::Deserialize::deserialize(declaration).map_err(|e| e.to_string())?;
+    if forms.is_empty() {
+        return Ok(());
+    }
+    let paths: Vec<_> = forms.iter().map(|form| &form.file).collect();
+    let canonical: Vec<bool> = compiler_query(&serde_json::json!({
+        "operation":"source-declarations", "files":[], "operations":[], "reference_paths":paths
+    }))?;
+    if forms.len() != canonical.len() {
+        return Err("E_PROTOCOL: incomplete reference path verdicts".into());
+    }
+    let fields: Vec<_> = forms
+        .into_iter()
+        .zip(canonical)
+        .map(|(form, canonical)| ReferenceFields {
+            canonical,
+            before: form.before,
+            after: form.after,
+            base: form.base,
+        })
+        .collect();
+    reference_syntax::validate_reference_syntax(&fields)
 }
 
 // Strict SPEC §3 structure. Reference/activation policy is evaluated separately.
@@ -190,9 +203,11 @@ fn action(v: &Value) -> Result {
     output_contract(&v["output_contract"])
 }
 #[cfg(not(verus_keep_ghost))]
-fn output_contract(v: &Value) -> Result {
-    let contract = serde_json::from_value(v.clone()).map_err(|e| e.to_string())?;
-    chrono_harness::verified_verifier::validate_contract(&contract)
+pub(crate) fn output_contract(v: &Value) -> Result {
+    if v.is_null() {
+        return Ok(());
+    }
+    compiler_query(&serde_json::json!({"operation":"validate-contract","contract":v}))
 }
 #[cfg(not(verus_keep_ghost))]
 fn actions(v: &Value) -> Result {
@@ -592,9 +607,7 @@ pub fn filemap(v: &Value) -> Result {
             boolean(required)?;
         }
         if let Some(declaration) = v.get("reference_syntax") {
-            let syntax: Vec<source_continuity::ReferenceSyntax> =
-                serde_json::from_value(declaration.clone()).map_err(|e| e.to_string())?;
-            validate_reference_syntax(&syntax)?;
+            validate_reference_syntax(declaration)?;
         }
         let plans = crate::execution::plans(v)?;
         for plan in plans.values() {
@@ -625,6 +638,7 @@ pub fn filemap(v: &Value) -> Result {
         }
         string(&c["basis"])?;
     }
+    let mut declared_sources = Vec::new();
     unique(&v["files"], Some("path"))?;
     for f in array(&v["files"])? {
         object(
@@ -632,18 +646,9 @@ pub fn filemap(v: &Value) -> Result {
             &["path", "owner", "surface", "cost", "edges"],
             &["symlink", "projection", "verification"],
         )?;
-        let source: chrono_harness::verified_verifier::sources::SourceFile =
-            serde_json::from_value(f.clone()).map_err(|e| e.to_string())?;
-        chrono_harness::verified_verifier::sources::validate_source_declaration(&source)
-            .map_err(|error| format!("{}: {error}", source.path))?;
-        if !chrono_harness::verified_verifier::sources::proof_roots_have_registered_operations(
-            &source,
-            &plan_operations,
-        ) {
-            return Err(format!(
-                "{}: E_VERUS_COVERAGE: proof root operation is not registered",
-                source.path
-            ));
+        if !f["verification"].is_null() {
+            declared_sources
+                .push(serde_json::json!({"path":f["path"],"verification":f["verification"]}));
         }
         path(&f["path"])?;
         string(&f["owner"])?;
@@ -674,6 +679,14 @@ pub fn filemap(v: &Value) -> Result {
             paths(&p["sources"])?;
             string(&p["producer"])?;
             choice(&p["scope"], &["managed-block", "whole-file"])?;
+        }
+    }
+    if !declared_sources.is_empty() {
+        let unused: Vec<bool> =
+            compiler_query(&serde_json::json!({"operation":"source-declarations",
+            "files":declared_sources,"operations":plan_operations,"reference_paths":[]}))?;
+        if !unused.is_empty() {
+            return Err("E_PROTOCOL: unexpected reference path verdicts".into());
         }
     }
     for e in array(&v["project_edges"])? {
