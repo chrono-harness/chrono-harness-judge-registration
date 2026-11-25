@@ -39,7 +39,10 @@ fn absent_or_ambiguous_pair_names_the_registered_owner() {
                 row.as_object_mut().unwrap().remove(field);
             }
             let message = validate(&projects).unwrap_err();
-            assert!(message.contains(&format!("E_TEST_PAIR: {label}:{id}")), "{message}");
+            assert!(
+                message.contains(&format!("E_TEST_PAIR: {label}:{id}")),
+                "{message}"
+            );
         }
     }
 }
