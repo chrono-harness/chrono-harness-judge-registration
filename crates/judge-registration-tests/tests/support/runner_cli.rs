@@ -352,9 +352,36 @@ fn evidence_session() -> Result<(), Box<dyn std::error::Error>> {
     }
     Ok(())
 }
+// Emulate the runner boundary and return exactly the preregistered selector reply.
+fn record_classification() -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::Read;
+    let mut input = std::io::stdin().lock();
+    let mut line = String::new();
+    input.read_line(&mut line)?;
+    let header: Value = serde_json::from_str(&line)?;
+    let mut payload = Vec::new();
+    input.read_to_end(&mut payload)?;
+    let message: Value = serde_json::from_slice(&payload)?;
+    let state = Path::new(".chrono-harness/state");
+    fs::write(
+        state.join("selector-observed.json"),
+        serde_json::to_vec(&json!({"header":header, "payload":message}))?,
+    )?;
+    let plan = fs::read(state.join("selector-plan.json"))?;
+    let process = json!({
+        "exit_code":0, "failure":null, "executable":header["program"], "sha256":header["expected_sha256"],
+        "cwd":std::env::current_dir()?, "argv":header["args"], "environment":header["env"],
+        "stdin_sha256":wire::sha256(&payload), "stdout_bytes":plan,
+        "stdout_sha256":wire::sha256(&plan), "stdout":std::str::from_utf8(&plan)?, "stderr":""
+    });
+    serde_json::to_writer(std::io::stdout().lock(), &process)?;
+    Ok(())
+}
+
 fn main() -> ExitCode {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let result = match args.as_slice() {
+        [op] if op == "record-command-v1" => record_classification(),
         [op] if op == "compiler-output-v1" => compiler_fixture(),
         [op] if op == "git-facts-v1" => facts_session(),
         [op] if op == "judge-evidence-v1" => evidence_session(),

@@ -53,11 +53,8 @@ fn prepare(req: &Request, reader: &InstalledGit, selector: &Path) -> Result<Valu
     }
     let env = serde_json::from_value(req.observations["environment"]["effective"].clone())
         .map_err(|e| e.to_string())?;
-    let timeout = protocol["timeout_seconds"]
-        .as_u64()
-        .ok_or("invalid classification timeout")?;
-    let limit = serde_json::from_value(protocol["stdout_limit_bytes"].clone())
-        .map_err(|e| e.to_string())?;
+    let (timeout, output_bytes) = crate::schema::protocol_limits(protocol)?;
+    let limit = usize::try_from(output_bytes).map_err(|e| e.to_string())?;
     let input = json!({
         "base": base["endpoint"], "candidate":candidate["endpoint"], "delta":req.delta,
         "impact":req.impact,

@@ -99,7 +99,7 @@ pub(super) fn checkout_case(host: &Host, case: &str) {
     );
 }
 
-pub(super) fn invoke(host: &Host, context: Value, initial: bool) -> (i32, Value) {
+pub(super) fn sealed(host: &Host, context: Value, initial: bool) -> Value {
     let root = fs::canonicalize(host.root()).unwrap();
     let state = root.join(".chrono-harness/state");
     fs::create_dir_all(&state).unwrap();
@@ -160,6 +160,12 @@ pub(super) fn invoke(host: &Host, context: Value, initial: bool) -> (i32, Value)
     };
     request["request_id"] = json!(digest(&request).unwrap());
     write(&root, ".chrono-harness/state/fixture-facts.json", &facts);
+    request
+}
+
+pub(super) fn invoke(host: &Host, context: Value, initial: bool) -> (i32, Value) {
+    let root = host.root();
+    let request = sealed(host, context, initial);
     let mut child = Command::new(root.join(".chrono-harness/bin/chrono-judge-registration"))
         .current_dir(&root)
         .args(["--protocol", request["protocol"].as_str().unwrap()])

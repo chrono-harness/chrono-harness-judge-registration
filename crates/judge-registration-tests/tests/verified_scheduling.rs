@@ -11,7 +11,33 @@ use vstd::prelude::verus;
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
 
+#[cfg(verus_keep_ghost)]
+use vstd::vpanic as panic;
+
 verus! {
+
+// Keep these checks executable in both the native and verified test.
+fn expect_protocol(ok: bool)
+    requires ok,
+{
+    if !ok { panic!(); }
+}
+
+#[cfg_attr(not(verus_keep_ghost), test)]
+fn protocol_field_errors_precede_launch_and_positive_values_are_preserved() {
+    use policy::ProtocolLimitError;
+    let missing = policy::protocol_limits(None, Some(0));
+    expect_protocol(matches!(missing, Err(ProtocolLimitError::Timeout)));
+    let zero = policy::protocol_limits(Some(0), None);
+    expect_protocol(matches!(zero, Err(ProtocolLimitError::Timeout)));
+    let invalid_output = policy::protocol_limits(Some(1), Some(0));
+    expect_protocol(matches!(invalid_output, Err(ProtocolLimitError::Output)));
+    let valid = policy::protocol_limits(Some(1), Some(u64::MAX));
+    match valid {
+        Ok((time, size)) => expect_protocol(time == 1 && size == u64::MAX),
+        Err(_) => expect_protocol(false),
+    }
+}
 
 #[cfg_attr(not(verus_keep_ghost), test)]
 fn execution_plan_limits_are_inclusive_and_require_time_and_output() {

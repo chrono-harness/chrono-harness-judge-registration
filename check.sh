@@ -56,6 +56,8 @@ cargo test --locked --manifest-path "$tests" --config "target.'cfg(all())'.runne
 for consumer in \
   execution_plan_queries_enforce_operation_identity_and_both_resource_limits \
   execution_plan_limits_are_inclusive_and_require_time_and_output \
+  classification_preparation_consumes_each_endpoint_and_starts_only_admitted_selectors \
+  protocol_field_errors_precede_launch_and_positive_values_are_preserved \
   git_facts::input_closure_bindings_accept_explicit_external_nodes \
   git_facts::required_candidate_snapshot_is_rejected_by_registration \
   retained_input_duplicates_check_each_descriptor_and_refresh_on_each_validation; do
@@ -82,6 +84,6 @@ stem=${metadata%/*}/${stem%.rmeta}
 chrono-host-bootstrap check-compiler-sources native "$stem" \
   src/lib.rs src/registrations.rs src/verified_nodes.rs src/verified_path_components.rs \
   src/inputs.rs src/verified_readiness.rs src/input_coverage.rs src/verified_input_coverage.rs \
-  src/execution.rs src/verified_scheduling.rs src/verified_snapshot_header.rs \
+  src/execution.rs src/classification_inputs.rs src/verified_scheduling.rs src/verified_snapshot_header.rs \
   src/verified_snapshot_records.rs src/schema.rs src/verified_object_fields.rs \
   src/verified_reference_syntax.rs || coverage_failure "native registration decisions differ from required sources"
