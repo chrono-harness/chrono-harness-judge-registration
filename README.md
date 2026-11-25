@@ -103,10 +103,6 @@ stdout 返回 `previous`、`candidate`、本次额外产生的 `git_facts` 和 `
 
 本仓的单元和汇总检查在各自的业务目录发布原件。判官读回本次 Verus 编译库及依赖文件后，成功的操作会释放这两份文件。检查报告的保留窗口为 24 小时，需要长期保存的报告及其引用原件须在窗口内按相对路径转存，并在检出外读回。
 
-开发机可将下列命令按实际安装路径加入用户 crontab，每小时调用本仓的模板维护任务。已到期的成功报告在读取和交付义务结束后释放，后续维护轮次回收已失去引用的原件。独立维护依赖机器在线及已安装的定时任务。
-
-```cron
-0 * * * * cd '/absolute/path/to/repository' && '/absolute/path/to/mise' run harness-maintain-checks >/dev/null
-```
+运行 `mise run harness-maintain-checks` 可执行一轮本仓的检查产物维护。已到期的成功报告在读取和交付义务结束后释放，后续维护轮次回收失去引用的原件。没有业务事件或显式维护时，到期的文件会继续占用磁盘。
 
 projects v2 的专属测试可以用 `assertion_helpers` 将自己负责的某个测试身份绑定到承担断言的操作。例如 `{"test:word_count_test":["words.check-result"]}`。每条绑定需要该测试行拥有的明确测试身份，以及非空、无重复的操作 ID 列表。执行计划及操作原件由采用此字段的 projects 判官核对。
