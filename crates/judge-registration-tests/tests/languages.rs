@@ -30,7 +30,7 @@ fn absent_or_ambiguous_pair_names_the_registered_owner() {
         ("scripts", "test_script", "script"),
     ] {
         for has_both in [false, true] {
-            let mut projects = registry(2);
+            let mut projects = registry(1);
             let row = &mut projects[collection][0];
             let id = row["id"].as_str().unwrap().to_owned();
             if has_both {
