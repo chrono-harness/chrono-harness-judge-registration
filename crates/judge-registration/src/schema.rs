@@ -564,7 +564,10 @@ pub(crate) fn project_bindings(
             string(&p["language"]).map_err(|e| owner(format!("language: {e}")))?;
         }
         if p.get("test_project").is_some() == p.get("tests_for").is_some() {
-            return Err("project requires exactly test_project or tests_for".into());
+            return Err(format!(
+                "E_TEST_PAIR: project:{} requires exactly one of test_project or tests_for",
+                string(&p["id"])?
+            ));
         }
         for k in ["manifest", "lockfile", "root"] {
             if let Some(value) = p.get(k) {
@@ -598,7 +601,10 @@ pub(crate) fn project_bindings(
         path(&s["path"])?;
         actions(&s["actions"])?;
         if s.get("test_script").is_some() == s.get("tests_for").is_some() {
-            return Err("script requires exactly test_script or tests_for".into());
+            return Err(format!(
+                "E_TEST_PAIR: script:{} requires exactly one of test_script or tests_for",
+                string(&s["id"])?
+            ));
         }
         string(
             &s[if s.get("test_script").is_some() {

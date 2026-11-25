@@ -24,6 +24,27 @@ fn registry(version: u64) -> Value {
 }
 
 #[test]
+fn absent_or_ambiguous_pair_names_the_registered_owner() {
+    for (collection, field, label) in [
+        ("projects", "test_project", "project"),
+        ("scripts", "test_script", "script"),
+    ] {
+        for has_both in [false, true] {
+            let mut projects = registry(2);
+            let row = &mut projects[collection][0];
+            let id = row["id"].as_str().unwrap().to_owned();
+            if has_both {
+                row["tests_for"] = json!("other");
+            } else {
+                row.as_object_mut().unwrap().remove(field);
+            }
+            let message = validate(&projects).unwrap_err();
+            assert!(message.contains(&format!("E_TEST_PAIR: {label}:{id}")), "{message}");
+        }
+    }
+}
+
+#[test]
 fn v2_requires_language_for_every_project_and_script() {
     let mut values = registry(2);
     for collection in ["projects", "scripts"] {
