@@ -122,10 +122,9 @@ fn retirement_structure_accepts_joint_pair_removal_and_rejects_a_surviving_produ
     candidate.get_mut(support::PROJECTS).unwrap()["projects"] =
         json!([old[support::PROJECTS]["projects"][0]]);
     let b = support::load(&candidate);
-    assert!(
-        chrono_judge_registration::validate_test_retirement(&a, &b, "test:t")
-            .unwrap_err()
-            .contains("joint producer/test removal required")
+    assert_eq!(
+        chrono_judge_registration::validate_test_retirement(&a, &b, "test:t").unwrap_err(),
+        "E_REQUIRED_TEST_REMOVED: joint producer/test removal required: test:t"
     );
 }
 
@@ -144,10 +143,10 @@ fn retirement_structure_resolves_grouped_alias_owner_and_requires_producer_decla
         {"kind":"test","id":"opaque/suffix","replacement":null,"reason":"pair retired"}
     ]);
     let b = support::load(&candidate);
-    assert!(
+    assert_eq!(
         chrono_judge_registration::validate_test_retirement(&a, &b, "test:opaque/suffix")
-            .unwrap_err()
-            .contains("missing/ambiguous project:p")
+            .unwrap_err(),
+        "E_REQUIRED_TEST_REMOVED: missing/ambiguous project:p for test:opaque/suffix"
     );
     candidate.get_mut(support::WORKFLOW).unwrap()["retirements"]
         .as_array_mut()

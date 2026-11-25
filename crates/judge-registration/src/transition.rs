@@ -1000,10 +1000,13 @@ pub fn validate_test_retirement(
                     .unwrap()
                     .iter()
                     .any(|p| p["id"] == owner || p["id"] == defining_id)
-                || !retirement_declaration(b, kind, owner)?["replacement"].is_null()
+                || !retirement_declaration(b, kind, owner).map_err(|_| {
+                    format!("E_REQUIRED_TEST_REMOVED: missing/ambiguous {kind}:{owner} for {node}")
+                })?["replacement"]
+                    .is_null()
             {
                 return Err(format!(
-                    "E_RETIREMENT: joint producer/test removal required: {node}"
+                    "E_REQUIRED_TEST_REMOVED: joint producer/test removal required: {node}"
                 ));
             }
         }
