@@ -1017,25 +1017,32 @@ pub fn downstream_validator(r: &Registrations, id: &str) -> bool {
     let Some(validator) = r.judges()["migration_validator"].as_str() else {
         return false;
     };
-    if validator == id {
-        return false;
-    }
-    let mut pending = vec![validator];
-    let mut seen = BTreeSet::new();
-    while let Some(n) = pending.pop() {
-        if !seen.insert(n) {
-            continue;
-        }
-        let Some(j) = judges.iter().find(|j| j["id"] == n) else {
-            return false;
-        };
-        for p in j["after"].as_array().unwrap() {
-            let Some(p) = p.as_str() else { return false };
-            if p == id {
-                return true;
-            }
-            pending.push(p)
+    let mut indices = BTreeMap::new();
+    for (index, judge) in judges.iter().enumerate() {
+        if let Some(name) = judge["id"].as_str() {
+            indices.entry(name).or_insert(index);
         }
     }
-    false
+    let target = *indices.entry(id).or_insert(judges.len());
+    let start = indices.get(validator).copied();
+    let unknown = judges.len() + 1;
+    let graph: Vec<Vec<_>> = judges
+        .iter()
+        .map(|judge| {
+            judge["after"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|parent| {
+                    parent
+                        .as_str()
+                        .map(|name| *indices.get(name).unwrap_or(&unknown))
+                })
+                .collect()
+        })
+        .collect();
+    // Every registered row is expanded at most once. Only the initial entry
+    // and the dependencies in those rows can ever be popped.
+    let steps = 1 + graph.iter().map(Vec::len).sum::<usize>();
+    crate::verified_readiness::validator_reaches(&graph, start, Some(target), steps)
 }

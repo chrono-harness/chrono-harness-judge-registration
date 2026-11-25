@@ -6,8 +6,30 @@ mod readiness;
 use vstd::prelude::verus;
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+use vstd::vpanic as panic;
 
 verus! {
+
+fn require_expected(value: bool) requires value {
+    if !value { panic!(); }
+}
+
+#[cfg_attr(not(verus_keep_ghost), test)]
+fn migration_dependencies_keep_direct_transitive_cycle_and_missing_cases() {
+    proof { reveal_with_fuel(readiness::walk, 9); reveal_with_fuel(readiness::edges, 9); }
+    let graph = vec![vec![Some(1usize)], vec![Some(2usize)], vec![Some(0usize)], vec![]];
+    require_expected(readiness::validator_reaches(&graph, Some(0), Some(1), 5));
+    require_expected(readiness::validator_reaches(&graph, Some(0), Some(2), 5));
+    let isolated = vec![vec![], vec![]];
+    require_expected(!readiness::validator_reaches(&isolated, Some(0), Some(1), 1));
+    let cycle = vec![vec![Some(1usize)], vec![Some(0usize)], vec![]];
+    require_expected(!readiness::validator_reaches(&cycle, Some(0), Some(2), 3));
+    require_expected(!readiness::validator_reaches(&graph, Some(0), Some(0), 5));
+    require_expected(!readiness::validator_reaches(&graph, None, Some(1), 5));
+    let malformed = vec![vec![None, Some(1usize)], vec![]];
+    require_expected(!readiness::validator_reaches(&malformed, Some(0), Some(1), 5));
+}
 
 #[cfg_attr(not(verus_keep_ghost), test)]
 fn only_exact_active_registry_is_ready() {
