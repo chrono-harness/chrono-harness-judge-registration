@@ -289,3 +289,32 @@ fn scoped_ci_receives_only_requested_retirements_with_the_old_cost_and_definitio
             .contains("E_RETIREMENT")
     );
 }
+
+#[test]
+fn assertion_responsibility_belongs_to_the_owning_v2_test() {
+    let mut r = registry(2);
+    for key in ["projects", "scripts"] {
+        for row in r[key].as_array_mut().unwrap() {
+            row["language"] = json!("rust");
+        }
+    }
+    r["scripts"][1]["assertion_helpers"] = json!({"test:st":["probe"]});
+    assert!(validate(&r).is_ok());
+    for invalid in [
+        json!({"test:t":["probe"]}),
+        json!({"test:st":["probe","probe"]}),
+        json!({"test:st":[]}),
+    ] {
+        r["scripts"][1]["assertion_helpers"] = invalid;
+        assert!(validate(&r).is_err());
+    }
+    r["scripts"][1]
+        .as_object_mut()
+        .unwrap()
+        .remove("assertion_helpers");
+    r["scripts"][0]["assertion_helpers"] = json!({"test:st":["probe"]});
+    assert!(validate(&r).is_err());
+    let mut legacy = registry(1);
+    legacy["projects"][1]["assertion_helpers"] = json!({"test:t":["probe"]});
+    assert!(validate(&legacy).is_err());
+}
