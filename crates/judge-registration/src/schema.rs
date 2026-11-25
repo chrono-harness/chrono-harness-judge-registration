@@ -275,6 +275,19 @@ fn edge(v: &Value, from: bool) -> Result {
     Ok(())
 }
 #[cfg(not(verus_keep_ghost))]
+pub(crate) fn protocol_limits(protocol: &Value) -> std::result::Result<(u64, u64), String> {
+    use crate::verified_scheduling::{ProtocolLimitError, protocol_limits};
+    protocol_limits(
+        protocol["timeout_seconds"].as_u64(),
+        protocol["stdout_limit_bytes"].as_u64(),
+    )
+    .map_err(|error| match error {
+        ProtocolLimitError::Timeout => "invalid protocol timeout_seconds".into(),
+        ProtocolLimitError::Output => "invalid protocol stdout_limit_bytes".into(),
+    })
+}
+
+#[cfg(not(verus_keep_ghost))]
 pub fn config(v: &Value) -> Result {
     let mut fields = vec![
         "enforcement",
@@ -352,11 +365,7 @@ pub fn config(v: &Value) -> Result {
     )?;
     choice(&v["protocol"]["id"], &[wire::PROTOCOL])?;
     choice(&v["protocol"]["encoding"], &["UTF-8"])?;
-    for k in ["timeout_seconds", "stdout_limit_bytes"] {
-        if !v["protocol"][k].as_u64().is_some_and(|n| n > 0) {
-            return Err(format!("invalid protocol {k}"));
-        }
-    }
+    protocol_limits(&v["protocol"])?;
     for s in array(&v["semantic_fields"])? {
         object(s, &["path", "pointers", "on"], &[])?;
         path(&s["path"])?;

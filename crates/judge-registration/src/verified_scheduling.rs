@@ -7,6 +7,30 @@ use vstd::prelude::*;
 
 verus! {
 
+/// The protocol checks timeout before output capacity and preserves both values.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ProtocolLimitError {
+    Timeout,
+    Output,
+}
+
+pub fn protocol_limits(time: Option<u64>, size: Option<u64>)
+    -> (result: Result<(u64, u64), ProtocolLimitError>)
+    ensures result == match time {
+        Some(t) if t > 0 => match size {
+            Some(n) if n > 0 => Ok((t, n)),
+            _ => Err(ProtocolLimitError::Output),
+        },
+        _ => Err(ProtocolLimitError::Timeout),
+    },
+{
+    match (time, size) {
+        (None, _) | (Some(0), _) => Err(ProtocolLimitError::Timeout),
+        (_, None) | (_, Some(0)) => Err(ProtocolLimitError::Output),
+        (Some(t), Some(n)) => Ok((t, n)),
+    }
+}
+
 #[cfg_attr(not(verus_keep_ghost), derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(not(verus_keep_ghost), serde(deny_unknown_fields))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -1790,6 +1790,91 @@ fn execution_plan_queries_enforce_operation_identity_and_both_resource_limits() 
 }
 
 #[test]
+fn classification_preparation_consumes_each_endpoint_and_starts_only_admitted_selectors() {
+    use chrono_judge_registration::classification_inputs::query;
+    let mut host = Host::new();
+    let config = ".chrono-harness/config.json";
+    let rules = json!([{"path":config,"pointers":["/protocol"],"on":"add-modify-delete"}]);
+    host.edit(config, |value| {
+        value["semantic_fields"] = rules.clone();
+        value["protocol"]["timeout_seconds"] = json!(17);
+        value["protocol"]["stdout_limit_bytes"] = json!(455);
+    });
+    let mut req = request_fixture::sealed(&host, host.context(), false);
+    req.as_object_mut().unwrap().remove("request_id");
+    req["impact"] = json!({"request":"impact"});
+    req["prior_results"] = json!([
+        {"protocol":wire::PROTOCOL,"request_id":"earlier","judge_id":"filemap","status":"pass",
+         "findings":[],"evidence":[],"outputs":{"impact":1}},
+        {"protocol":wire::PROTOCOL,"request_id":"earlier","judge_id":"cost","status":"pass",
+         "findings":[],"evidence":[],"outputs":{"costs":2}},
+        {"protocol":wire::PROTOCOL,"request_id":"earlier","judge_id":"another","status":"warn",
+         "findings":[],"evidence":[],"outputs":{"impact":null,"additional":0}}
+    ]);
+    req["request_id"] = json!(wire::digest(&req).unwrap());
+    let request = serde_json::from_value(req.clone()).unwrap();
+    let state = host.root().join(".chrono-harness/state");
+    let selector = state.join("selector");
+    fs::write(&selector, b"selector bytes").unwrap();
+    let observed = state.join("selector-observed.json");
+    let plan = json!({"base":[config],"candidate":[config],"context":{"selected":true}});
+    fs::write(
+        state.join("selector-plan.json"),
+        serde_json::to_vec(&plan).unwrap(),
+    )
+    .unwrap();
+    let error = query(&request, Path::new("relative-selector"));
+    assert_eq!(
+        error["result"]["Err"],
+        "E_PROTOCOL: classification selector must be an absolute path"
+    );
+    assert!(!observed.exists());
+    let reply = query(&request, &selector);
+    let result = &reply["result"]["Ok"];
+    assert!(result.is_object(), "{reply}");
+    let executed: Value = serde_json::from_slice(&fs::read(&observed).unwrap()).unwrap();
+    assert_eq!(
+        executed["header"],
+        json!({"program":selector, "args":["plan-classification-v1"],
+        "env":req["observations"]["environment"]["effective"],"timeout_seconds":17,
+        "output_limit_bytes":455,"expected_sha256":wire::sha256(b"selector bytes")})
+    );
+    let old: Value =
+        serde_json::from_slice(&request_fixture::blob(host.root(), &host.base, config)).unwrap();
+    assert_eq!(result["before"][config], old);
+    assert_eq!(result["after"][config]["semantic_fields"], rules);
+    assert_eq!(result["context"], plan["context"]);
+    assert_eq!(result["base"]["semantic_fields"], old["semantic_fields"]);
+    assert_eq!(result["candidate"]["semantic_fields"], rules);
+    assert_eq!(
+        executed["payload"],
+        json!({"base":result["base"],"candidate":result["candidate"],
+        "delta":req["delta"],"impact":req["impact"],"prior_impacts":[1,null],"prior_costs":[2],
+        "binding":{"base":host.base,"candidate":host.candidate,"candidate_tree":req["candidate"]["tree"],
+        "registry_digest":req["registries"]["digest"],"context_digest":req["context"]["sha256"]}})
+    );
+    fs::remove_file(&observed).unwrap();
+    for (time, size, first) in [
+        (json!(0), json!(-1), "timeout_seconds"),
+        (json!(1), json!(0), "stdout_limit_bytes"),
+    ] {
+        host.edit(config, |value| {
+            value["protocol"]["timeout_seconds"] = time;
+            value["protocol"]["stdout_limit_bytes"] = size;
+        });
+        let r =
+            serde_json::from_value(request_fixture::sealed(&host, host.context(), false)).unwrap();
+        let rejected = query(&r, Path::new("also-relative"));
+        let error = rejected["result"]["Err"].as_str().unwrap();
+        assert!(
+            error.ends_with(&format!("invalid protocol {first}")),
+            "{error}"
+        );
+        assert!(!observed.exists());
+    }
+}
+
+#[test]
 fn classification_documents_read_only_missing_selected_paths() {
     use chrono_judge_registration::classification_inputs::documents;
     let present = ["converted", "extra"].into();
