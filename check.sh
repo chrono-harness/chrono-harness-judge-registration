@@ -22,6 +22,26 @@ cargo fmt --check --manifest-path crates/registration-fixture/Cargo.toml
 cargo fmt --check --manifest-path crates/judge-registration/Cargo.toml
 cargo fmt --check --manifest-path crates/judge-registration-tests/Cargo.toml
 product=crates/judge-registration/Cargo.toml
+tests=crates/judge-registration-tests/Cargo.toml
+# Cargo resolves the selected native test's local packages. FILEMAP owns the
+# traversal from each manifest to the test that must run when it changes.
+cargo metadata --locked --format-version 1 --filter-platform host-tuple --manifest-path "$tests" |
+  jq --arg root "$(pwd -P)/" --slurpfile map .chrono-harness/FILEMAP.json '
+    [$map[0].files[] | .path as $path | .edges[] | . + {from: ("file:" + $path)}] as $files
+    | [.packages[] | select(.source == null) | .manifest_path | ltrimstr($root)
+       | {id: ., node: ("file:" + .), reference: ., reason: "local Cargo package"}] as $manifests
+    | {base: [], candidate: ($files + $map[0].project_edges), seeds: $manifests, reachable_only: false}
+  ' | chrono-judge-filemap closure-v1 |
+  jq -e --arg target 'test:judge-registration-tests' '
+    (.closure.predecessors | keys) as $manifests
+    | [.closure.traversed[] | select(.edge.kind == "test-execution" and .edge.to == $target)
+       | .seeds[]] as $covered
+    | ($manifests - $covered) as $missing
+    | if ($manifests | length) == 0 then error("Cargo reported no local manifests")
+      elif ($missing | length) > 0 then
+        error("E_INPUT_UNDECLARED: local Cargo manifests missing a registered path to " + $target + ": " + ($missing | join(", ")))
+      else true end
+  ' > /dev/null
 cargo build --locked --message-format=json-render-diagnostics --manifest-path "$product" > "$scratch/build.jsonl"
 export CHRONO_TEST_REGISTRATION="$CARGO_TARGET_DIR/debug/chrono-judge-registration"
 CHRONO_TEST_GIT=$(command -v chrono-test-git) || { echo "chrono-test-git is required by registration tests" >&2; exit 1; }
@@ -32,7 +52,7 @@ mkdir "$scratch/test-bin"
 ln -s "$CHRONO_TEST_GIT" "$scratch/test-bin/git"
 ln -s "$CARGO_TARGET_DIR/debug/chrono-harness-test-cli" "$scratch/test-bin/chrono-harness"
 test_runner=$(jq -cn --arg path "PATH=$scratch/test-bin" '["/usr/bin/env", $path]')
-cargo test --locked --manifest-path crates/judge-registration-tests/Cargo.toml --config "target.'cfg(all())'.runner=$test_runner" --color never -- --format pretty | tee "$scratch/tests.log"
+cargo test --locked --manifest-path "$tests" --config "target.'cfg(all())'.runner=$test_runner" --color never -- --format pretty | tee "$scratch/tests.log"
 for consumer in \
   execution_plan_queries_enforce_operation_identity_and_both_resource_limits \
   execution_plan_limits_are_inclusive_and_require_time_and_output \
