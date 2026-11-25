@@ -27,10 +27,10 @@
             "2",
             "--output-json",
             "--compile",
-            "--emit=link=.chrono-harness/state/verify.registration-path-components.rlib,dep-info=.chrono-harness/state/verify.registration-path-components.rlib.d",
+            "--emit=link={operation_state}/verify.registration-path-components.rlib,dep-info={operation_state}/verify.registration-path-components.rlib.d",
             "crates/judge-registration/src/verified_path_components.rs",
             "-o",
-            ".chrono-harness/state/verify.registration-path-components.rlib",
+            "{operation_state}/verify.registration-path-components.rlib",
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
@@ -49,10 +49,10 @@
             "2",
             "--output-json",
             "--compile",
-            "--emit=link=.chrono-harness/state/verify.registration-nodes.rlib,dep-info=.chrono-harness/state/verify.registration-nodes.rlib.d",
+            "--emit=link={operation_state}/verify.registration-nodes.rlib,dep-info={operation_state}/verify.registration-nodes.rlib.d",
             "crates/judge-registration/src/verified_nodes.rs",
             "-o",
-            ".chrono-harness/state/verify.registration-nodes.rlib",
+            "{operation_state}/verify.registration-nodes.rlib",
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
@@ -71,10 +71,10 @@
             "2",
             "--output-json",
             "--compile",
-            "--emit=link=.chrono-harness/state/verify.registration-readiness.rlib,dep-info=.chrono-harness/state/verify.registration-readiness.rlib.d",
+            "--emit=link={operation_state}/verify.registration-readiness.rlib,dep-info={operation_state}/verify.registration-readiness.rlib.d",
             "crates/judge-registration/src/verified_readiness.rs",
             "-o",
-            ".chrono-harness/state/verify.registration-readiness.rlib",
+            "{operation_state}/verify.registration-readiness.rlib",
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
@@ -93,10 +93,10 @@
             "2",
             "--output-json",
             "--compile",
-            "--emit=link=.chrono-harness/state/verify.registration-input-coverage.rlib,dep-info=.chrono-harness/state/verify.registration-input-coverage.rlib.d",
+            "--emit=link={operation_state}/verify.registration-input-coverage.rlib,dep-info={operation_state}/verify.registration-input-coverage.rlib.d",
             "crates/judge-registration/src/verified_input_coverage.rs",
             "-o",
-            ".chrono-harness/state/verify.registration-input-coverage.rlib",
+            "{operation_state}/verify.registration-input-coverage.rlib",
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
@@ -115,10 +115,10 @@
             "2",
             "--output-json",
             "--compile",
-            "--emit=link=.chrono-harness/state/verify.registration-scheduling.rlib,dep-info=.chrono-harness/state/verify.registration-scheduling.rlib.d",
+            "--emit=link={operation_state}/verify.registration-scheduling.rlib,dep-info={operation_state}/verify.registration-scheduling.rlib.d",
             "crates/judge-registration/src/verified_scheduling.rs",
             "-o",
-            ".chrono-harness/state/verify.registration-scheduling.rlib",
+            "{operation_state}/verify.registration-scheduling.rlib",
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
@@ -148,10 +148,10 @@
             "2",
             "--output-json",
             "--compile",
-            "--emit=link=.chrono-harness/state/verify.registration-path-components-tests.rlib,dep-info=.chrono-harness/state/verify.registration-path-components-tests.rlib.d",
+            "--emit=link={operation_state}/verify.registration-path-components-tests.rlib,dep-info={operation_state}/verify.registration-path-components-tests.rlib.d",
             "crates/judge-registration-tests/tests/verified_path_components.rs",
             "-o",
-            ".chrono-harness/state/verify.registration-path-components-tests.rlib",
+            "{operation_state}/verify.registration-path-components-tests.rlib",
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
@@ -170,10 +170,10 @@
             "2",
             "--output-json",
             "--compile",
-            "--emit=link=.chrono-harness/state/verify.registration-nodes-tests.rlib,dep-info=.chrono-harness/state/verify.registration-nodes-tests.rlib.d",
+            "--emit=link={operation_state}/verify.registration-nodes-tests.rlib,dep-info={operation_state}/verify.registration-nodes-tests.rlib.d",
             "crates/judge-registration-tests/tests/verified_nodes.rs",
             "-o",
-            ".chrono-harness/state/verify.registration-nodes-tests.rlib",
+            "{operation_state}/verify.registration-nodes-tests.rlib",
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
@@ -192,10 +192,10 @@
             "2",
             "--output-json",
             "--compile",
-            "--emit=link=.chrono-harness/state/verify.registration-readiness-tests.rlib,dep-info=.chrono-harness/state/verify.registration-readiness-tests.rlib.d",
+            "--emit=link={operation_state}/verify.registration-readiness-tests.rlib,dep-info={operation_state}/verify.registration-readiness-tests.rlib.d",
             "crates/judge-registration-tests/tests/verified_readiness.rs",
             "-o",
-            ".chrono-harness/state/verify.registration-readiness-tests.rlib",
+            "{operation_state}/verify.registration-readiness-tests.rlib",
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
@@ -214,10 +214,10 @@
             "2",
             "--output-json",
             "--compile",
-            "--emit=link=.chrono-harness/state/verify.registration-input-coverage-tests.rlib,dep-info=.chrono-harness/state/verify.registration-input-coverage-tests.rlib.d",
+            "--emit=link={operation_state}/verify.registration-input-coverage-tests.rlib,dep-info={operation_state}/verify.registration-input-coverage-tests.rlib.d",
             "crates/judge-registration-tests/tests/verified_input_coverage.rs",
             "-o",
-            ".chrono-harness/state/verify.registration-input-coverage-tests.rlib",
+            "{operation_state}/verify.registration-input-coverage-tests.rlib",
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
@@ -236,10 +236,10 @@
             "2",
             "--output-json",
             "--compile",
-            "--emit=link=.chrono-harness/state/verify.registration-scheduling-tests.rlib,dep-info=.chrono-harness/state/verify.registration-scheduling-tests.rlib.d",
+            "--emit=link={operation_state}/verify.registration-scheduling-tests.rlib,dep-info={operation_state}/verify.registration-scheduling-tests.rlib.d",
             "crates/judge-registration-tests/tests/verified_scheduling.rs",
             "-o",
-            ".chrono-harness/state/verify.registration-scheduling-tests.rlib",
+            "{operation_state}/verify.registration-scheduling-tests.rlib",
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
@@ -258,10 +258,10 @@
             "2",
             "--output-json",
             "--compile",
-            "--emit=link=.chrono-harness/state/verify.registration-snapshot-header-tests.rlib,dep-info=.chrono-harness/state/verify.registration-snapshot-header-tests.rlib.d",
+            "--emit=link={operation_state}/verify.registration-snapshot-header-tests.rlib,dep-info={operation_state}/verify.registration-snapshot-header-tests.rlib.d",
             "crates/judge-registration-tests/tests/verified_snapshot_header.rs",
             "-o",
-            ".chrono-harness/state/verify.registration-snapshot-header-tests.rlib",
+            "{operation_state}/verify.registration-snapshot-header-tests.rlib",
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
@@ -280,10 +280,10 @@
             "2",
             "--output-json",
             "--compile",
-            "--emit=link=.chrono-harness/state/verify.registration-snapshot-records-tests.rlib,dep-info=.chrono-harness/state/verify.registration-snapshot-records-tests.rlib.d",
+            "--emit=link={operation_state}/verify.registration-snapshot-records-tests.rlib,dep-info={operation_state}/verify.registration-snapshot-records-tests.rlib.d",
             "crates/judge-registration-tests/tests/verified_snapshot_records.rs",
             "-o",
-            ".chrono-harness/state/verify.registration-snapshot-records-tests.rlib",
+            "{operation_state}/verify.registration-snapshot-records-tests.rlib",
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
@@ -302,10 +302,10 @@
             "2",
             "--output-json",
             "--compile",
-            "--emit=link=.chrono-harness/state/verify.registration-reference-syntax-tests.rlib,dep-info=.chrono-harness/state/verify.registration-reference-syntax-tests.rlib.d",
+            "--emit=link={operation_state}/verify.registration-reference-syntax-tests.rlib,dep-info={operation_state}/verify.registration-reference-syntax-tests.rlib.d",
             "crates/judge-registration-tests/tests/reference_syntax.rs",
             "-o",
-            ".chrono-harness/state/verify.registration-reference-syntax-tests.rlib",
+            "{operation_state}/verify.registration-reference-syntax-tests.rlib",
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
