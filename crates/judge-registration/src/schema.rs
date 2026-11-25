@@ -57,10 +57,10 @@ pub fn validate_reference_syntax(declaration: &Value) -> Result {
 use crate::wire;
 #[cfg(not(verus_keep_ghost))]
 fn outside_git_metadata(input: &std::path::Path) -> std::result::Result<(), String> {
-    for component in input.components() {
-        if component.as_os_str().eq_ignore_ascii_case(".git") {
-            return Err(format!("protected Git metadata path: {}", input.display()));
-        }
+    if input.components().any(|part| {
+        crate::verified_path_components::is_git_metadata(part.as_os_str().as_encoded_bytes())
+    }) {
+        return Err(format!("protected Git metadata path: {}", input.display()));
     }
     Ok(())
 }

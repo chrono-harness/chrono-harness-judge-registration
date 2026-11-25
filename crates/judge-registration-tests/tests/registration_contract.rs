@@ -18,6 +18,7 @@ fn git_metadata_cannot_be_registered_as_a_host_file_or_external_input() {
         ("nested/.GiT/", false),
         (".github/", true),
         (".git-cache/", true),
+        ("nested/.gitkeep/", true),
     ] {
         let mut values = support::values();
         values.get_mut(support::CONFIG).unwrap()["artifacts"][0]["path"] = json!(path);
@@ -27,14 +28,27 @@ fn git_metadata_cannot_be_registered_as_a_host_file_or_external_input() {
             "{path}"
         );
     }
-    for path in [".git/HEAD", "/external/checkout/.GIT/HEAD"] {
+    for path in [
+        ".git/HEAD",
+        "nested/.Git",
+        "./invalid//.git/file",
+        "/external/checkout/.GIT/HEAD",
+        "/external/./nested//.git",
+    ] {
         let mut values = support::values();
         let config = values.get_mut(support::CONFIG).unwrap();
         config["environment"]["inputs"] =
             json!([{"id":"external","location":path,"sha256":"a".repeat(64)}]);
         let error = Registrations::load(&values, support::CONFIG).err().unwrap();
-        assert!(error.contains("Git metadata"), "{path}: {error}");
+        assert!(
+            error.ends_with(&format!("protected Git metadata path: {path}")),
+            "{path}: {error}"
+        );
     }
+    let mut values = support::values();
+    values.get_mut(support::CONFIG).unwrap()["environment"]["inputs"] =
+        json!([{"id":"external","location":"/external/.gitkeep/data","sha256":"a".repeat(64)}]);
+    assert!(Registrations::load(&values, support::CONFIG).is_ok());
 }
 
 #[test]

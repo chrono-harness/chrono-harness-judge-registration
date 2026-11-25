@@ -45,6 +45,7 @@ pub mod verified_input_coverage;
 #[allow(unexpected_cfgs)]
 #[cfg(not(verus_keep_ghost))]
 pub mod verified_nodes;
+pub mod verified_path_components;
 #[allow(unexpected_cfgs)]
 #[cfg(not(verus_keep_ghost))]
 pub mod verified_readiness;

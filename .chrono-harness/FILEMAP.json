@@ -554,6 +554,27 @@
       }
     },
     {
+      "path": "crates/judge-registration-tests/tests/verified_path_components.rs",
+      "owner": "judge-registration-tests",
+      "surface": "test",
+      "cost": "unmeasured",
+      "edges": [
+        {
+          "kind": "test-execution",
+          "to": "test:judge-registration-tests"
+        }
+      ],
+      "verification": {
+        "role": "program",
+        "roots": [
+          {
+            "path": "crates/judge-registration-tests/tests/verified_path_components.rs",
+            "operation": "verify.registration-path-components-tests"
+          }
+        ]
+      }
+    },
+    {
       "path": "crates/judge-registration-tests/tests/verified_readiness.rs",
       "owner": "judge-registration-tests",
       "surface": "test",
@@ -981,6 +1002,31 @@
       }
     },
     {
+      "path": "crates/judge-registration/src/verified_path_components.rs",
+      "owner": "judge-registration",
+      "surface": "product",
+      "cost": "unmeasured",
+      "edges": [
+        {
+          "kind": "test-execution",
+          "to": "test:judge-registration-tests"
+        }
+      ],
+      "verification": {
+        "role": "program",
+        "roots": [
+          {
+            "path": "crates/judge-registration/src/verified_path_components.rs",
+            "operation": "verify.registration-path-components"
+          },
+          {
+            "path": "crates/judge-registration-tests/tests/verified_path_components.rs",
+            "operation": "verify.registration-path-components-tests"
+          }
+        ]
+      }
+    },
+    {
       "path": "crates/judge-registration/src/verified_readiness.rs",
       "owner": "judge-registration",
       "surface": "product",
@@ -1219,6 +1265,8 @@
   "execution_plans": {
     "test:judge-registration-tests": {
       "operations": [
+        "verify.registration-path-components",
+        "verify.registration-path-components-tests",
         "verify.registration-nodes",
         "verify.registration-readiness",
         "verify.registration-input-coverage",

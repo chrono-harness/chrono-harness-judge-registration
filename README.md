@@ -22,6 +22,7 @@
 | `scheduling-tests` | 完整和不完整的执行计划 | 包含额外声明和缺一个声明得到不同结果 |
 | `snapshot-header-tests` | `inputs::snapshot_shape`、快照生产和读取共用头与选择器判定 | v1/v2/v3、未知 schema、选择器字段和链接、absent 表示、直接版本边界；JSON 入口区分字段为 null 和字段缺省；端点缺少或版本不符时按配置选择返回首个版本诊断。 |
 | `snapshot-records-tests` | `inputs::retained_shape` 把 JSON 字段交给 `parse_retained`，解析器调用字节解码或返回原错误 | 缺失与未知字段的先后，absent、bytes、blob 分支，路径、摘要、长度和解码调用次数 |
+| `path-components`、`path-components-tests` | 宿主相对路径和外部绝对路径通过标准库枚举组件，出现精确的 ASCII 大小写混合 .git 名称即拒绝 | 名称的四个原始字节、全部大小写、相近名称与非 ASCII 字节；原生登记入口另核完整路径错误与调用顺序 |
 | `reference-syntax-tests` | `schema::validate_reference_syntax` 解码声明，向 runner 查询路径判定，再调用前后缀与 base 检查 | 独立前后缀、base、空串及路径判定组合；原生适配器检查输入路径和 250/251 条边界 |
 
 机器证明作用于表内根的 Verus 模型。原生测试另行检查 JSON 适配、实际调用和错误传播。Git 及 runner 的进程接口在这些测试中使用协议替身。调用正确性还依赖 Cargo/rustc 与 Verus 的真实输出、所选二进制、文件系统对该临时目录的隔离，以及摘要比较。检查完成后清理临时构建目录，GitHub 原件保留一天。
