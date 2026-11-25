@@ -194,6 +194,6 @@ exit "$native_status"
 [tasks.harness-setup]
 description = "Install this repository's selected tools"
 
-run = ["mise install", "mise exec -- chrono-instructions sync-rules --host-root ."]
+run = ["sh .chrono-harness/install-tools.sh", "mise exec -- chrono-instructions sync-rules --host-root ."]
 
 
