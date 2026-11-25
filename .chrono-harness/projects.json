@@ -16,6 +16,28 @@
       "root": "crates/judge-registration",
       "test_project": "judge-registration-tests",
       "actions": {
+        "verify_path_components": {
+          "operation": "verify.registration-path-components",
+          "tool": "verus",
+          "argv": [
+            "--crate-type=lib",
+            "--no-cheating",
+            "--no-external-by-default",
+            "--num-threads",
+            "2",
+            "--output-json",
+            "--compile",
+            "--emit=link=.chrono-harness/state/verify.registration-path-components.rlib,dep-info=.chrono-harness/state/verify.registration-path-components.rlib.d",
+            "crates/judge-registration/src/verified_path_components.rs",
+            "-o",
+            ".chrono-harness/state/verify.registration-path-components.rlib",
+            "-Zchecksum-hash-algorithm=sha256"
+          ],
+          "output_contract": {
+            "version": "0.2026.04.24.f8e1704",
+            "commit": "f8e17045c4ac17a02e566b8997070f2eecc255be"
+          }
+        },
         "verify_nodes": {
           "operation": "verify.registration-nodes",
           "tool": "verus",
@@ -115,6 +137,28 @@
       "root": "crates/judge-registration-tests",
       "tests_for": "judge-registration",
       "actions": {
+        "verify_path_components_tests": {
+          "operation": "verify.registration-path-components-tests",
+          "tool": "verus",
+          "argv": [
+            "--crate-type=lib",
+            "--no-cheating",
+            "--no-external-by-default",
+            "--num-threads",
+            "2",
+            "--output-json",
+            "--compile",
+            "--emit=link=.chrono-harness/state/verify.registration-path-components-tests.rlib,dep-info=.chrono-harness/state/verify.registration-path-components-tests.rlib.d",
+            "crates/judge-registration-tests/tests/verified_path_components.rs",
+            "-o",
+            ".chrono-harness/state/verify.registration-path-components-tests.rlib",
+            "-Zchecksum-hash-algorithm=sha256"
+          ],
+          "output_contract": {
+            "version": "0.2026.04.24.f8e1704",
+            "commit": "f8e17045c4ac17a02e566b8997070f2eecc255be"
+          }
+        },
         "verify_nodes_tests": {
           "operation": "verify.registration-nodes-tests",
           "tool": "verus",

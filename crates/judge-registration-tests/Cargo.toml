@@ -66,3 +66,7 @@ path = "tests/impact_views.rs"
 [[test]]
 name = "reference_syntax"
 path = "tests/reference_syntax.rs"
+
+[[test]]
+name = "verified_path_components"
+path = "tests/verified_path_components.rs"
