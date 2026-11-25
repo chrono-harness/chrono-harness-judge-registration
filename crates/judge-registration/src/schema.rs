@@ -556,6 +556,7 @@ pub(crate) fn project_bindings(
                 "lockfile",
                 "root",
                 "test_groups",
+                "assertion_helpers",
             ],
         )
         .map_err(owner)?;
@@ -592,7 +593,7 @@ pub(crate) fn project_bindings(
             } else {
                 &["id", "path", "actions"]
             },
-            &["test_script", "tests_for"],
+            &["test_script", "tests_for", "assertion_helpers"],
         )
         .map_err(owner)?;
         if languages {
@@ -614,7 +615,38 @@ pub(crate) fn project_bindings(
             }],
         )?;
     }
-    crate::execution::test_bindings(v)
+    let bindings = crate::execution::test_bindings(v)?;
+    for (key, prefix) in [("projects", "project"), ("scripts", "script")] {
+        for row in array(&v[key])? {
+            let Some(helpers) = row.get("assertion_helpers") else {
+                continue;
+            };
+            if !languages || row.get("tests_for").is_none() {
+                return Err("assertion_helpers requires a schema v2 dedicated test".into());
+            }
+            let owner = format!("{prefix}:{}", string(&row["id"])?);
+            for (test, operations) in helpers
+                .as_object()
+                .ok_or("assertion_helpers must map test identities to operations")?
+            {
+                if !bindings
+                    .get(test)
+                    .is_some_and(|entries| entries.len() == 1 && entries[0].owner == owner)
+                {
+                    return Err(format!(
+                        "E_TEST_BINDING: {test} is not a dedicated test of {owner}"
+                    ));
+                }
+                if array(operations)?.is_empty() {
+                    return Err(format!(
+                        "assertion_helpers: empty operation list for {test}"
+                    ));
+                }
+                unique(operations, None)?;
+            }
+        }
+    }
+    Ok(bindings)
 }
 #[cfg(not(verus_keep_ghost))]
 pub fn filemap(v: &Value) -> Result {

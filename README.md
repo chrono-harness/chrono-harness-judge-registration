@@ -108,3 +108,5 @@ stdout 返回 `previous`、`candidate`、本次额外产生的 `git_facts` 和 `
 ```cron
 0 * * * * cd '/absolute/path/to/repository' && '/absolute/path/to/mise' run harness-maintain-checks >/dev/null
 ```
+
+projects v2 的专属测试可以用 `assertion_helpers` 将自己负责的某个测试身份绑定到承担断言的操作。例如 `{"test:word_count_test":["words.check-result"]}`。每条绑定需要该测试行拥有的明确测试身份，以及非空、无重复的操作 ID 列表。执行计划及操作原件由采用此字段的 projects 判官核对。
