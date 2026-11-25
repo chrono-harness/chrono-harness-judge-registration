@@ -24,6 +24,7 @@ features:
 - worktree
 - verus
 generate_check: false
+local_check_retention: true
 manage_roadmap: true
 project_guide: ''
 publisher_workflow: Release chrono-judge-registration
