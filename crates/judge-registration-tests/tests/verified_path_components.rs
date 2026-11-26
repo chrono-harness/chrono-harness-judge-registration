@@ -50,7 +50,7 @@ fn literal_prefixes_include_only_matching_bytes() {
     expect(policy::has_byte_prefix(&name, &[]));
 }
 
-// A kept path occurs on either side of a removed path and a second kept path.
+// An asymmetric result distinguishes reversal from preserving repeated paths.
 #[cfg(verus_keep_ghost)]
 fn ordered_repeats(directory: String, first: String, artifact: String, second: String)
     requires !policy::matches_directory(first, directory),
@@ -59,15 +59,15 @@ fn ordered_repeats(directory: String, first: String, artifact: String, second: S
 {
     broadcast use vstd::array::group_array_axioms;
     let dirs = [directory];
-    let paths = [first.clone(), artifact, second.clone(), first.clone()];
+    let paths = [first.clone(), artifact, first.clone(), second.clone()];
     let kept = policy::outside_artifacts(&dirs, &paths);
     proof {
         reveal_with_fuel(Seq::<_>::filter, 5);
     }
     expect(kept.len() == 3);
     expect(kept[0] == first);
-    expect(kept[1] == second);
-    expect(kept[2] == first);
+    expect(kept[1] == first);
+    expect(kept[2] == second);
 }
 
 }
