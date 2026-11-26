@@ -529,3 +529,53 @@ fn canonical_json_and_file_identity_share_the_published_digest_format() {
     let value: serde_json::Value = serde_json::from_str(r#"{"z":2,"a":1}"#).unwrap();
     assert_eq!(wire::canonical(&value).unwrap(), br#"{"a":1,"z":2}"#);
 }
+
+#[cfg(not(verus_keep_ghost))]
+#[test]
+fn effective_projection_preserves_the_full_retained_blob_length() {
+    use chrono_judge_registration::{inputs, wire};
+    use chrono_registration_fixture::{CONFIG, load, values};
+    use serde_json::json;
+
+    let digest = "a".repeat(64);
+    let mut documents = values();
+    documents.get_mut(CONFIG).unwrap()["environment"] = json!({
+        "inherit": [], "values": {},
+        "inputs": [{"id": "data", "location": "input.bin", "sha256": digest}]
+    });
+    let registrations = load(&documents);
+    for length in [0, u64::MAX] {
+        let retained =
+            json!({"blob": ".chrono-harness/state/input", "sha256": digest, "length": length});
+        let Ok(inputs::Retained::Blob {
+            digest,
+            length: decoded,
+            ..
+        }) = inputs::retained_shape(&retained)
+        else {
+            panic!("expected a retained blob of length {length}");
+        };
+        let fact = json!({"location": "input.bin", "sha256": digest, "length": decoded});
+        let endpoint = |commit| {
+            json!({
+                "commit": commit, "environment": {}, "inherited": {}, "files": {"data": fact}
+            })
+        };
+        let endpoints = json!({
+            "base": endpoint("1".repeat(40)), "candidate": endpoint("2".repeat(40))
+        });
+        let evidence = json!({
+            "schema": "chrono-effective-inputs/v1", "completeness_proven": false,
+            "endpoints": endpoints, "identity": wire::digest(&endpoints).unwrap()
+        });
+        let projected =
+            inputs::project_effective(&evidence, &registrations, &registrations, None).unwrap();
+        for name in ["base", "candidate"] {
+            assert_eq!(
+                projected["endpoints"][name]["files"]["data"]["length"].as_u64(),
+                Some(length)
+            );
+        }
+        assert_eq!(projected["identity"], evidence["identity"]);
+    }
+}
