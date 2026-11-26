@@ -41,9 +41,9 @@ pub(crate) fn file_identity(path: &Path) -> Result<(String, u64), String> {
     regular(path.metadata().map_err(io_error)?)?;
     let mut input = std::fs::File::open(path).map_err(io_error)?;
     regular(input.metadata().map_err(io_error)?)?;
-    let mut hash = Sha256::new();
+    let mut hash = digest_io::IoWrapper(Sha256::new());
     let size = std::io::copy(&mut input, &mut hash).map_err(io_error)?;
-    Ok((format!("{:x}", hash.finalize()), size))
+    Ok((hex::encode(hash.0.finalize()), size))
 }
 
 #[cfg(not(verus_keep_ghost))]

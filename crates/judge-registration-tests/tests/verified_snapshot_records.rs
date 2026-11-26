@@ -4,17 +4,14 @@ use vstd::{contrib::exec_spec::ExecSpecEq, prelude::*};
 #[cfg(verus_keep_ghost)]
 use vstd::{string::StringSliceAdditionalSpecFns, vpanic as panic};
 #[cfg(verus_keep_ghost)]
-#[path = "../../judge-registration/src/verified_snapshot_header.rs"]
-mod header;
-#[cfg(verus_keep_ghost)]
-#[path = "../../judge-registration/src/verified_snapshot_records.rs"]
-mod records;
+#[path = "../../judge-registration/src/inputs.rs"]
+mod inputs;
 #[cfg(verus_keep_ghost)]
 #[path = "../../judge-registration/src/verified_object_fields.rs"]
 mod schema;
 #[cfg(verus_keep_ghost)]
 mod policy {
-    pub use super::{header::Retained, records::*, schema::*};
+    pub use super::{inputs::*, schema::*};
 }
 #[cfg(not(verus_keep_ghost))]
 mod policy {
@@ -511,4 +508,24 @@ fn retained_json_preserves_lexical_paths_and_rejects_invalid_digests() {
             Some("E_INPUT_BLOB: invalid digest")
         );
     }
+}
+
+#[cfg(not(verus_keep_ghost))]
+#[test]
+fn canonical_json_and_file_identity_share_the_published_digest_format() {
+    use chrono_judge_registration::{inputs::observe_file, wire};
+    use std::io::Write;
+
+    let expected = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    let mut file = tempfile::NamedTempFile::new().unwrap();
+    file.write_all(b"abc").unwrap();
+    assert_eq!(
+        observe_file(file.path()).unwrap(),
+        Some((expected.to_owned(), 3))
+    );
+    assert_eq!(wire::sha256(b"abc"), expected);
+    assert!(wire::is_digest(expected));
+    assert!(!wire::is_digest(&expected.to_uppercase()));
+    let value: serde_json::Value = serde_json::from_str(r#"{"z":2,"a":1}"#).unwrap();
+    assert_eq!(wire::canonical(&value).unwrap(), br#"{"a":1,"z":2}"#);
 }
