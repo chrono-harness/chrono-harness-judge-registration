@@ -18,10 +18,14 @@ pub fn json(bytes: &[u8]) -> Result<Value, String> {
     let value: serde_yaml_ng::Value =
         serde_json::from_slice(bytes).map_err(|error: serde_json::Error| {
             let message = error.to_string();
-            if let Some((quoted, location)) = message
+            if let Some((key, location)) = message
                 .strip_prefix("duplicate entry with key ")
                 .and_then(|tail| tail.rsplit_once(" at line "))
-                && let Ok(key) = litrs::StringLit::parse(quoted)
+                .and_then(|(quoted, location)| {
+                    litrs::StringLit::parse(quoted)
+                        .ok()
+                        .map(|key| (key, location))
+                })
             {
                 return format!("duplicate JSON member {} at line {location}", key.value());
             }
