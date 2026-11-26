@@ -1,7 +1,9 @@
 #![allow(unexpected_cfgs)]
+#[cfg(not(verus_keep_ghost))]
 pub use inputs::{Retained, RetainedError, RetainedObservation, parse_retained, select_retained};
 #[cfg(not(verus_keep_ghost))]
 pub use schema::validate_reference_syntax;
+#[cfg(not(verus_keep_ghost))]
 pub use schema::{ObjectFieldError, object_error_parts, reference_syntax, validate_object_fields};
 // Registration owns full-format schema, snapshot and affected-reference admissibility.
 #[cfg(not(verus_keep_ghost))]
@@ -18,6 +20,7 @@ mod historical_git;
 pub mod impact_views;
 #[cfg(not(verus_keep_ghost))]
 mod input_coverage;
+#[cfg(not(verus_keep_ghost))]
 pub mod inputs;
 #[cfg(not(verus_keep_ghost))]
 pub mod project_views;
@@ -52,6 +55,7 @@ pub mod verified_readiness;
 #[allow(unexpected_cfgs)]
 #[cfg(not(verus_keep_ghost))]
 pub mod verified_scheduling;
+#[cfg(not(verus_keep_ghost))]
 pub mod workflow_views;
 #[cfg(not(verus_keep_ghost))]
 pub mod worktree;
@@ -65,6 +69,7 @@ pub use transition::{
 pub use verified_nodes::NodeKind;
 #[cfg(not(verus_keep_ghost))]
 pub mod initial;
+#[cfg(not(verus_keep_ghost))]
 mod schema;
 #[cfg(not(verus_keep_ghost))]
 use crate::inputs::checked_path;
@@ -85,7 +90,20 @@ use std::{
     path::Path,
 };
 /// Maximum input bytes for the bounded protocol and project binding queries.
+#[cfg(not(verus_keep_ghost))]
 pub const PROJECTS_INPUT_LIMIT: usize = 64 * 1024 * 1024;
+
+use vstd::{contrib::exec_spec::ExecSpecEq, prelude::*};
+
+verus! {
+/// Judge the observed checkout after removing the candidate's artifact directories.
+pub fn checkout_is_dirty(observed: &str, candidate: &str, tracked_count: usize, nonartifact: usize)
+    -> (dirty: bool)
+    ensures dirty == (observed@ != candidate@ || tracked_count != 0 || nonartifact != 0),
+{
+    !<&str>::exec_eq(observed, candidate) || tracked_count != 0 || nonartifact != 0
+}
+}
 
 /// Validate the explicit projects document without requiring a full-governance host.
 #[cfg(not(verus_keep_ghost))]
@@ -437,10 +455,12 @@ fn evaluate(
             true,
         );
     }
-    if observed.head != req.candidate.commit
-        || !observed.tracked.is_empty()
-        || !observed_paths.is_empty()
-    {
+    if checkout_is_dirty(
+        &observed.head,
+        &req.candidate.commit,
+        observed.tracked.len(),
+        observed_paths.len(),
+    ) {
         issue(
             r,
             "E_SNAPSHOT_DIRTY",

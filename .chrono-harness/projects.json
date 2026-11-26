@@ -28,7 +28,7 @@
             "--output-json",
             "--compile",
             "--emit=link={operation_state}/verify.registration-path-components.rlib,dep-info={operation_state}/verify.registration-path-components.rlib.d",
-            "crates/judge-registration/src/verified_path_components.rs",
+            "crates/judge-registration/src/lib.rs",
             "-o",
             "{operation_state}/verify.registration-path-components.rlib",
             "-Zchecksum-hash-algorithm=sha256"

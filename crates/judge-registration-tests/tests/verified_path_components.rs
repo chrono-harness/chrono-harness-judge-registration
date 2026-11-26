@@ -1,10 +1,11 @@
 //! Independent expectations for bytes of a component from std::path.
 #![allow(unexpected_cfgs)]
 #[cfg(not(verus_keep_ghost))]
-use chrono_judge_registration::verified_path_components as policy;
+use chrono_judge_registration as registration;
 #[cfg(verus_keep_ghost)]
-#[path = "../../judge-registration/src/verified_path_components.rs"]
-mod policy;
+#[path = "../../judge-registration/src/lib.rs"]
+mod registration;
+use registration::verified_path_components as policy;
 use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 use vstd::vpanic as panic;
@@ -15,6 +16,16 @@ fn expect(condition: bool)
     requires condition,
 {
     if !condition { panic!(); }
+}
+
+#[cfg(verus_keep_ghost)]
+fn checkout_facts_determine_dirtiness(observed: &str, different: &str, changes: usize)
+    requires observed@ != different@, changes > 0,
+{
+    expect(!registration::checkout_is_dirty(observed, observed, 0, 0));
+    expect(registration::checkout_is_dirty(observed, different, 0, 0));
+    expect(registration::checkout_is_dirty(observed, observed, changes, 0));
+    expect(registration::checkout_is_dirty(observed, observed, 0, changes));
 }
 
 #[cfg_attr(not(verus_keep_ghost), test)]
