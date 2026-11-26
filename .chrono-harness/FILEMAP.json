@@ -342,6 +342,17 @@
       }
     },
     {
+      "path": ".github/dependabot.yml",
+      "owner": "host",
+      "surface": "product",
+      "cost": "unmeasured",
+      "edges": [],
+      "verification": {
+        "role": "data",
+        "roots": []
+      }
+    },
+    {
       "path": ".github/roadmap.cjs",
       "owner": "host",
       "surface": "product",
@@ -363,6 +374,13 @@
         "role": "data",
         "roots": []
       }
+    },
+    {
+      "path": ".github/workflows/dependabot-auto-merge.yml",
+      "owner": "host",
+      "surface": "product",
+      "cost": "unmeasured",
+      "edges": []
     },
     {
       "path": ".github/workflows/issue-roadmap.yml",
