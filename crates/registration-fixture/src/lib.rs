@@ -56,7 +56,7 @@ pub fn values() -> Values {
         ),
         (
             JUDGES.into(),
-            json!({"schema_version":1,"status":"active","migration_validator":"registration","judges":[{"id":"registration","executable":".chrono-harness/bin/chrono-judge-registration","version":"0.1.0","sha256":null,"argv":["--protocol","chrono-judge/v1"],"selector":"every-delta","after":[],"modes":["evaluate"]},{"id":"filemap","executable":".chrono-harness/bin/chrono-judge-filemap","version":"0.1.0","sha256":null,"argv":["--protocol","chrono-judge/v1"],"selector":"every-delta","after":["registration"],"modes":["evaluate"]}]}),
+            json!({"schema_version":1,"status":"active","migration_validator":"registration","judges":[{"id":"registration","executable":".chrono-harness/bin/chrono-judge-registration","version":"0.1.1","sha256":null,"argv":["--protocol","chrono-judge/v1"],"selector":"every-delta","after":[],"modes":["evaluate"]},{"id":"filemap","executable":".chrono-harness/bin/chrono-judge-filemap","version":"0.1.0","sha256":null,"argv":["--protocol","chrono-judge/v1"],"selector":"every-delta","after":["registration"],"modes":["evaluate"]}]}),
         ),
         (
             WORKFLOW.into(),

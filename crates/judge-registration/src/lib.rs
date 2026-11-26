@@ -202,13 +202,7 @@ pub fn nonartifact_paths(config: &Value, paths: &[String]) -> Vec<String> {
 }
 
 #[cfg(not(verus_keep_ghost))]
-fn outside_artifacts(artifacts: &[String], paths: &[String]) -> Vec<String> {
-    paths
-        .iter()
-        .filter(|p| !artifacts.iter().any(|a| p.starts_with(a)))
-        .cloned()
-        .collect()
-}
+use verified_path_components::outside_artifacts;
 #[cfg(not(verus_keep_ghost))]
 pub fn judge(req: &Request) -> Response {
     let mut r = req.response(Status::Pass);
@@ -294,14 +288,11 @@ fn evaluate(
         );
         return Ok(());
     }
-    let observed = reader.checkout_excluding(
-        root,
-        &req.candidate.commit,
-        &facts::artifact_directories(
-            cv.get(&candidate_identity.effective_path)
-                .ok_or("missing effective candidate config")?,
-        )?,
+    let artifact_directories = facts::artifact_directories(
+        cv.get(&candidate_identity.effective_path)
+            .ok_or("missing effective candidate config")?,
     )?;
+    let observed = reader.checkout_excluding(root, &req.candidate.commit, &artifact_directories)?;
     if facts::registry_digest(bv, cv)? != req.registries.digest
         || req.registries.base != req.base.root.join(".chrono-harness")
         || req.registries.candidate != root.join(".chrono-harness")
@@ -432,10 +423,10 @@ fn evaluate(
             return Ok(());
         }
     };
-    let nonartifact = |paths: &[String]| nonartifact_paths(new.config(), paths);
+    let observed_paths = outside_artifacts(&artifact_directories, &observed.untracked);
     if observed.head != req.checkout.head
         || observed.tracked != req.checkout.tracked
-        || nonartifact(&observed.untracked) != nonartifact(&req.checkout.untracked)
+        || observed_paths != outside_artifacts(&artifact_directories, &req.checkout.untracked)
         || observed.index_flags != req.checkout.index_flags
     {
         issue(
@@ -448,16 +439,14 @@ fn evaluate(
     }
     if observed.head != req.candidate.commit
         || !observed.tracked.is_empty()
-        || !nonartifact(&observed.untracked).is_empty()
+        || !observed_paths.is_empty()
     {
         issue(
             r,
             "E_SNAPSHOT_DIRTY",
             format!(
                 "head={}, tracked={:?}, nonartifact={:?}",
-                observed.head,
-                observed.tracked,
-                nonartifact(&observed.untracked)
+                observed.head, observed.tracked, observed_paths
             ),
             "/checkout",
             false,

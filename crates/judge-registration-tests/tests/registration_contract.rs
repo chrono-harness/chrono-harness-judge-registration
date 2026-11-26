@@ -542,7 +542,7 @@ fn initial_host() -> Host {
             "schema":"chrono-initial-check/v1", "host_config":".chrono-harness/config.json",
             "timeout_seconds":30, "stdout_limit_bytes":1048576,
             "judges":[{"id":"initial-registration","executable":".chrono-harness/bin/chrono-judge-registration",
-                "sha256":sha256(&fs::read(binary).unwrap()),"version":"0.1.0",
+                "sha256":sha256(&fs::read(binary).unwrap()),"version":fixture_registries()["judges"]["judges"][0]["version"],
                 "argv":["--protocol","chrono-initial-judge/v1"],"selector":"every-initial","after":[],"modes":["inventory"]}]
         }),
     );
@@ -1592,11 +1592,18 @@ fn worktree_input_queries_preserve_selected_views_and_path_boundaries() {
         ".chrono-harness/state/report",
         ".chrono-harness/state-old/report",
         "src/main.rs",
+        ".chrono-harness/state",
+        ".chrono-harness/State/file",
+        ".chrono-harness/state/报告",
+        "src/main.rs",
     ];
     let filtered =
         request(json!({"operation":"nonartifact-paths","config":regs.config(),"paths":paths}))
             .unwrap();
-    assert_eq!(filtered["paths"], json!([paths[1], paths[2]]));
+    assert_eq!(
+        filtered["paths"],
+        json!([paths[1], paths[2], paths[3], paths[4], paths[6]])
+    );
     let path = request(json!({"operation":"custody-config","config":regs.config()})).unwrap();
     assert_eq!(path["filemap_path"], regs.config()["registries"]["filemap"]);
     assert_eq!(
