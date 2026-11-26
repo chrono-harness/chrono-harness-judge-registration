@@ -10,7 +10,9 @@ use sha2::{Digest, Sha256};
 #[cfg(not(verus_keep_ghost))]
 use std::{collections::BTreeMap, path::PathBuf};
 
+#[cfg(not(verus_keep_ghost))]
 pub const PROTOCOL: &str = "chrono-judge/v1";
+#[cfg(not(verus_keep_ghost))]
 pub const INITIAL_PROTOCOL: &str = "chrono-initial-judge/v1";
 
 #[cfg(not(verus_keep_ghost))]
