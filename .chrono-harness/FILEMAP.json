@@ -897,7 +897,20 @@
           "kind": "test-execution",
           "to": "test:judge-registration-tests"
         }
-      ]
+      ],
+      "verification": {
+        "role": "program",
+        "roots": [
+          {
+            "path": "crates/judge-registration/src/lib.rs",
+            "operation": "verify.registration-path-components"
+          },
+          {
+            "path": "crates/judge-registration-tests/tests/verified_path_components.rs",
+            "operation": "verify.registration-path-components-tests"
+          }
+        ]
+      }
     },
     {
       "path": "crates/judge-registration/src/main.rs",
@@ -1093,7 +1106,7 @@
         "role": "program",
         "roots": [
           {
-            "path": "crates/judge-registration/src/verified_path_components.rs",
+            "path": "crates/judge-registration/src/lib.rs",
             "operation": "verify.registration-path-components"
           },
           {
