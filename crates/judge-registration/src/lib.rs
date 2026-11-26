@@ -28,7 +28,6 @@ pub mod project_views;
 mod registrations;
 #[cfg(not(verus_keep_ghost))]
 mod runner_session;
-#[cfg(not(verus_keep_ghost))]
 pub mod wire;
 #[cfg(not(verus_keep_ghost))]
 pub use registrations::check_documents;

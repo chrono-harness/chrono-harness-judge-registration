@@ -1,13 +1,19 @@
 //! Registration's inputs and findings on the published judge protocols.
+#[cfg(not(verus_keep_ghost))]
 use crate::runner_session::Stream;
+#[cfg(not(verus_keep_ghost))]
 use serde::{Deserialize, Serialize};
+#[cfg(not(verus_keep_ghost))]
 use serde_json::{Value, json};
+#[cfg(not(verus_keep_ghost))]
 use sha2::{Digest, Sha256};
+#[cfg(not(verus_keep_ghost))]
 use std::{collections::BTreeMap, path::PathBuf};
 
 pub const PROTOCOL: &str = "chrono-judge/v1";
 pub const INITIAL_PROTOCOL: &str = "chrono-initial-judge/v1";
 
+#[cfg(not(verus_keep_ghost))]
 pub fn json(bytes: &[u8]) -> Result<Value, String> {
     let value: serde_yaml_ng::Value =
         serde_json::from_slice(bytes).map_err(|error: serde_json::Error| {
@@ -24,11 +30,13 @@ pub fn json(bytes: &[u8]) -> Result<Value, String> {
     serde_json::to_value(value).map_err(|error| error.to_string())
 }
 
+#[cfg(not(verus_keep_ghost))]
 pub fn decode<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, String> {
     serde_json::from_value(json(bytes)?).map_err(|e| e.to_string())
 }
 
 /// Retain the exact source of an embedded document until duplicate checking.
+#[cfg(not(verus_keep_ghost))]
 pub(crate) fn strict_value<'de, D, T>(d: D) -> Result<T, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -38,25 +46,27 @@ where
     decode(raw.get().as_bytes()).map_err(serde::de::Error::custom)
 }
 
+#[cfg(not(verus_keep_ghost))]
 pub fn canonical<T: Serialize>(value: &T) -> Result<Vec<u8>, String> {
     serde_jcs::to_vec(value).map_err(|e| e.to_string())
 }
 
+#[cfg(not(verus_keep_ghost))]
 pub fn sha256(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    hex::encode(Sha256::digest(bytes))
 }
 
+#[cfg(not(verus_keep_ghost))]
 pub fn digest<T: Serialize>(value: &T) -> Result<String, String> {
     Ok(sha256(&canonical(value)?))
 }
 
+#[cfg(not(verus_keep_ghost))]
 pub fn is_digest(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    value.len() == 64 && value.bytes().all(is_lower_hex_digit)
 }
 
+#[cfg(not(verus_keep_ghost))]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum Scope {
@@ -64,6 +74,7 @@ pub enum Scope {
     Collect { manifest: String },
 }
 
+#[cfg(not(verus_keep_ghost))]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Delta {
@@ -75,6 +86,7 @@ pub struct Delta {
     pub new_mode: Option<String>,
 }
 
+#[cfg(not(verus_keep_ghost))]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct IndexFlag {
@@ -82,6 +94,7 @@ pub struct IndexFlag {
     pub tag: String,
 }
 
+#[cfg(not(verus_keep_ghost))]
 impl IndexFlag {
     pub(crate) fn hides_changes(&self) -> bool {
         self.tag == "S"
@@ -93,6 +106,7 @@ impl IndexFlag {
     }
 }
 
+#[cfg(not(verus_keep_ghost))]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Checkout {
@@ -102,6 +116,7 @@ pub struct Checkout {
     pub index_flags: Vec<IndexFlag>,
 }
 
+#[cfg(not(verus_keep_ghost))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Endpoint {
@@ -110,6 +125,7 @@ pub struct Endpoint {
     pub tree: String,
 }
 
+#[cfg(not(verus_keep_ghost))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Registries {
@@ -118,6 +134,7 @@ pub struct Registries {
     pub digest: String,
 }
 
+#[cfg(not(verus_keep_ghost))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Context {
@@ -125,6 +142,7 @@ pub struct Context {
     pub sha256: String,
 }
 
+#[cfg(not(verus_keep_ghost))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Executable {
@@ -133,6 +151,7 @@ pub struct Executable {
     pub version: String,
 }
 
+#[cfg(not(verus_keep_ghost))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Request {
@@ -156,6 +175,7 @@ pub struct Request {
     pub runner: Executable,
 }
 
+#[cfg(not(verus_keep_ghost))]
 pub fn evidence<T: serde::de::DeserializeOwned>(operation: Value) -> Result<T, String> {
     Stream::with("judge-evidence-v1", None, |stream| {
         stream.exchange(&operation)
@@ -163,12 +183,14 @@ pub fn evidence<T: serde::de::DeserializeOwned>(operation: Value) -> Result<T, S
 }
 
 /// Ask the same installed runner that launches judges to verify the fixed binding.
+#[cfg(not(verus_keep_ghost))]
 pub(crate) fn bound_judge_path(root: &std::path::Path, binding: &Value) -> Result<PathBuf, String> {
     Stream::with("judge-evidence-v1", Some(root), |stream| {
         stream.exchange(&json!({"operation":"bound-judge-path","binding":binding}))
     })
 }
 
+#[cfg(not(verus_keep_ghost))]
 impl Request {
     pub fn validate(&self) -> Result<(), String> {
         evidence(json!({"operation":"validate-request", "request":self}))
@@ -179,6 +201,7 @@ impl Request {
     }
 }
 
+#[cfg(not(verus_keep_ghost))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct InitialRequest {
@@ -197,6 +220,7 @@ pub struct InitialRequest {
     pub prior_results: Vec<Response>,
 }
 
+#[cfg(not(verus_keep_ghost))]
 impl InitialRequest {
     pub fn validate(&self) -> Result<(), String> {
         evidence(json!({"operation":"validate-initial-request", "request":self}))
@@ -207,6 +231,7 @@ impl InitialRequest {
     }
 }
 
+#[cfg(not(verus_keep_ghost))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Response {
@@ -219,6 +244,7 @@ pub struct Response {
     pub outputs: BTreeMap<String, Value>,
 }
 
+#[cfg(not(verus_keep_ghost))]
 impl Response {
     fn new(protocol: &str, request: &str, judge: &str, status: Status) -> Self {
         Self {
@@ -238,6 +264,7 @@ impl Response {
     }
 }
 
+#[cfg(not(verus_keep_ghost))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Finding {
@@ -248,6 +275,7 @@ pub struct Finding {
     pub causes: Vec<String>,
 }
 
+#[cfg(not(verus_keep_ghost))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Status {
@@ -257,6 +285,7 @@ pub enum Status {
     Error,
 }
 
+#[cfg(not(verus_keep_ghost))]
 impl Status {
     pub fn exit_code(self) -> u8 {
         match self {
@@ -265,4 +294,14 @@ impl Status {
             Self::Error => 2,
         }
     }
+}
+
+use vstd::prelude::*;
+
+verus! {
+fn is_lower_hex_digit(byte: u8) -> (valid: bool)
+    ensures valid == (48 <= byte <= 57 || 97 <= byte <= 102),
+{
+    (48 <= byte && byte <= 57) || (97 <= byte && byte <= 102)
+}
 }
