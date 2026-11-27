@@ -1,18 +1,39 @@
 //! A single invocation of an installed runner JSON-lines protocol.
+#[cfg(not(verus_keep_ghost))]
+use vstd::prelude::verus;
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
+
+verus! {
+/// The installed runner decodes one JSON header line followed by the unchanged stdin bytes.
+pub(crate) fn command_input(mut header: Vec<u8>, input: &[u8]) -> (frame: Vec<u8>)
+    ensures frame@ == header@ + seq![b'\n'] + input@,
+{
+    header.push(b'\n');
+    header.extend_from_slice(input);
+    header
+}
+}
+
+#[cfg(not(verus_keep_ghost))]
 use serde::{Serialize, de::DeserializeOwned};
+#[cfg(not(verus_keep_ghost))]
 use std::{
     io::{BufRead, BufReader, Write},
     path::Path,
     process::{Child, ChildStdin, ChildStdout, Command, Stdio},
 };
+#[cfg(not(verus_keep_ghost))]
 type Result<T> = std::result::Result<T, String>;
 
+#[cfg(not(verus_keep_ghost))]
 pub(crate) struct Stream {
     protocol: &'static str,
     child: Child,
     input: Option<ChildStdin>,
     output: BufReader<ChildStdout>,
 }
+#[cfg(not(verus_keep_ghost))]
 impl Stream {
     pub(crate) fn with<T>(
         protocol: &'static str,
@@ -76,6 +97,7 @@ impl Stream {
         }
     }
 }
+#[cfg(not(verus_keep_ghost))]
 impl Drop for Stream {
     fn drop(&mut self) {
         if self.input.is_some() {
@@ -84,6 +106,7 @@ impl Drop for Stream {
     }
 }
 
+#[cfg(not(verus_keep_ghost))]
 /// Invoke a one-request installed tool and collect the child's original outcome.
 pub(crate) fn query<T: DeserializeOwned>(
     program: &str,
@@ -95,6 +118,7 @@ pub(crate) fn query<T: DeserializeOwned>(
     query_bytes(program, operation, cwd, &bytes)
 }
 
+#[cfg(not(verus_keep_ghost))]
 fn query_bytes<T: DeserializeOwned>(
     program: &str,
     operation: &str,
@@ -131,6 +155,7 @@ fn query_bytes<T: DeserializeOwned>(
     serde_json::from_slice(&output.stdout).map_err(|e| format!("{program} {operation}: {e}"))
 }
 
+#[cfg(not(verus_keep_ghost))]
 /// Ask the runner which launched the child for the complete original receipt.
 pub(crate) fn record<T: DeserializeOwned>(
     root: &Path,
@@ -144,8 +169,7 @@ pub(crate) fn record<T: DeserializeOwned>(
 ) -> Result<T> {
     let header = serde_json::json!({"program":program,"args":args,"env":env,
         "timeout_seconds":timeout_seconds,"output_limit_bytes":output_limit_bytes,"expected_sha256":digest});
-    let mut bytes = serde_json::to_vec(&header).map_err(|e| e.to_string())?;
-    bytes.push(b'\n');
-    bytes.extend_from_slice(input);
+    let header = serde_json::to_vec(&header).map_err(|e| e.to_string())?;
+    let bytes = command_input(header, input);
     query_bytes("chrono-harness", "record-command-v1", Some(root), &bytes)
 }
