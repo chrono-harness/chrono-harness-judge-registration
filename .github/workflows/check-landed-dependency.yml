@@ -1,0 +1,85 @@
+name: Check landed dependency
+run-name: >-
+  ${{ github.event_name == 'workflow_run' && format('CodeQL {0}/{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || format('CodeQL {0}', inputs.codeql_attempt) }}
+on:
+  workflow_run:
+    workflows: [CodeQL]
+    types: [completed]
+    branches: [dev]
+  workflow_dispatch:
+    inputs:
+      codeql_attempt:
+        description: Completed CodeQL run ID/attempt for the landed dependency
+        required: true
+permissions:
+  contents: read
+jobs:
+  source:
+    if: github.ref == 'refs/heads/dev' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-24.04
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+      base: ${{ steps.source.outputs.base }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - id: source
+        run: python3 .github/landed_dependency.py
+  check:
+    name: Check landed ${{ needs.source.outputs.sha }}
+    needs: source
+    if: needs.source.outputs.sha != ''
+    runs-on: macos-15
+    steps:
+      - name: Read the landing report consumer from the workflow revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: workflow
+          sparse-checkout: .github/landed_report.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.source.outputs.sha }}
+          path: host
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Install the registered host tools
+        working-directory: host
+        run: /bin/sh .chrono-harness/ci/install.sh
+      - name: Check the landed commit against its first parent
+        id: check
+        working-directory: host
+        shell: bash
+        env:
+          BASE: ${{ needs.source.outputs.base }}
+          CANDIDATE: ${{ needs.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE"
+          test "$(git rev-parse HEAD^1)" = "$BASE"
+          # The registered local input provider fetches dev. Bind that ref to
+          # the selected merge parent even if GitHub dev moves during the check.
+          git update-ref refs/heads/dev "$BASE"
+          git remote set-url origin "$PWD"
+          ./check.sh
+      - name: Read the published check and its original evidence
+        if: always() && steps.check.outcome != 'skipped'
+        id: landing
+        working-directory: host
+        env:
+          BASE: ${{ needs.source.outputs.base }}
+          CANDIDATE: ${{ needs.source.outputs.sha }}
+        run: python3 ../workflow/.github/landed_report.py "$BASE" "$CANDIDATE"
+      - name: Preserve the landed check and its original operations
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: landed-check-${{ needs.source.outputs.sha }}
+          path: ${{ steps.landing.outputs.paths || 'host/.chrono-harness/state/collection/' }}
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
