@@ -557,14 +557,10 @@ fn effective_projection_preserves_the_full_retained_blob_length() {
     });
     let registrations = load(&documents);
     let mut identities = std::collections::BTreeSet::new();
-    for length in [
-        0,
-        (1_u64 << 53) - 1,
-        1_u64 << 53,
-        (1_u64 << 53) + 1,
-        u64::MAX - 1,
-        u64::MAX,
-    ] {
+    // Captured from the legacy issuer. Adjacent wide lengths share an identity.
+    let legacy_cases: Vec<(u64, String)> =
+        serde_json::from_str(include_str!("fixtures/legacy-effective-lengths.json")).unwrap();
+    for (length, legacy_identity) in legacy_cases {
         let retained =
             json!({"blob": ".chrono-harness/state/input", "sha256": digest, "length": length});
         let Ok(inputs::Retained::Blob {
@@ -586,10 +582,17 @@ fn effective_projection_preserves_the_full_retained_blob_length() {
         });
         let legacy = json!({
             "schema": "chrono-effective-inputs/v1", "completeness_proven": false,
-            "endpoints": endpoints, "identity": wire::digest(&endpoints).unwrap()
+            "endpoints": endpoints, "identity": legacy_identity
         });
         let previous = inputs::project_effective(&legacy, &registrations, &registrations, None);
-        assert_eq!(previous.is_ok(), length < 1_u64 << 53);
+        if length < 1_u64 << 53 {
+            assert!(previous.is_ok());
+        } else {
+            assert_eq!(
+                previous.unwrap_err(),
+                "ambiguous legacy effective input length; regenerate from retained originals"
+            );
+        }
         let evidence = inputs::effective_evidence("chrono-effective-inputs/v1", endpoints).unwrap();
         let bytes = wire::canonical(&evidence).unwrap();
         let received = wire::decode(&bytes).unwrap();
