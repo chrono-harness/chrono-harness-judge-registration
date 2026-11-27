@@ -82,7 +82,7 @@ filename=${metadata##*/}
 stem=${filename#lib}
 stem=${metadata%/*}/${stem%.rmeta}
 chrono-host-bootstrap check-compiler-sources native "$stem" \
-  src/lib.rs src/impact_views.rs src/registrations.rs src/verified_nodes.rs src/verified_path_components.rs \
+  src/lib.rs src/registrations.rs src/verified_nodes.rs src/verified_path_components.rs \
   src/inputs.rs src/verified_readiness.rs src/input_coverage.rs src/verified_input_coverage.rs \
   src/execution.rs src/classification_inputs.rs src/verified_scheduling.rs src/verified_snapshot_header.rs \
   src/verified_snapshot_records.rs src/schema.rs src/verified_object_fields.rs \
