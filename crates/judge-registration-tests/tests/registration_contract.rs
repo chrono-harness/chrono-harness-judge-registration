@@ -21,6 +21,9 @@ use tempfile::TempDir;
 use super::policy;
 #[cfg(not(verus_keep_ghost))]
 use chrono_judge_registration::verified_path_components as policy;
+#[cfg(not(verus_keep_ghost))]
+use vstd::prelude::verus;
+#[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 use vstd::vpanic as panic;
