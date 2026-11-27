@@ -522,6 +522,22 @@
       }
     },
     {
+      "path": "crates/judge-registration-tests/tests/fixtures/legacy-effective-lengths.json",
+      "owner": "judge-registration-tests",
+      "surface": "test",
+      "cost": "unmeasured",
+      "edges": [
+        {
+          "kind": "test-execution",
+          "to": "test:judge-registration-tests"
+        }
+      ],
+      "verification": {
+        "role": "data",
+        "roots": []
+      }
+    },
+    {
       "path": "crates/judge-registration-tests/tests/git_facts.rs",
       "owner": "judge-registration-tests",
       "surface": "test",
