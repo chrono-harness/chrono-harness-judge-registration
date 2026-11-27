@@ -1,11 +1,39 @@
 //! Registration declarations and retained inputs used by the project executor.
+#[cfg(not(verus_keep_ghost))]
+use vstd::prelude::verus;
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
+
+verus! {
+/// Only project and script definitions can own nodes in the project executor's view.
+pub(crate) fn project_owner(identity: &[u8]) -> (selected: bool)
+    ensures selected == (super::verified_path_components::byte_prefix(identity@, seq![b'p', b'r', b'o', b'j', b'e', b'c', b't', b':'])
+        || super::verified_path_components::byte_prefix(identity@, seq![b's', b'c', b'r', b'i', b'p', b't', b':'])),
+{
+    let project = [b'p', b'r', b'o', b'j', b'e', b'c', b't', b':'];
+    let script = [b's', b'c', b'r', b'i', b'p', b't', b':'];
+    broadcast use vstd::array::group_array_axioms;
+    assert(project@ =~= seq![b'p', b'r', b'o', b'j', b'e', b'c', b't', b':']);
+    assert(script@ =~= seq![b's', b'c', b'r', b'i', b'p', b't', b':']);
+    super::verified_path_components::has_byte_prefix(identity, &project)
+        || super::verified_path_components::has_byte_prefix(identity, &script)
+}
+}
+
+#[cfg(not(verus_keep_ghost))]
 use crate::collection::ArtifactTransport;
+#[cfg(not(verus_keep_ghost))]
 use crate::wire::Request;
+#[cfg(not(verus_keep_ghost))]
 use crate::{Registrations, execution, historical_git::InstalledGit, inputs, transition};
+#[cfg(not(verus_keep_ghost))]
 use serde::Deserialize;
+#[cfg(not(verus_keep_ghost))]
 use serde_json::{Value, json};
+#[cfg(not(verus_keep_ghost))]
 use std::{collections::BTreeMap, io::Read, path::Path};
 
+#[cfg(not(verus_keep_ghost))]
 pub(crate) fn project(
     request: &Request,
     old: &Registrations,
@@ -21,7 +49,7 @@ pub(crate) fn project(
                 .definitions
                 .into_iter()
                 .map(|d| d.identity)
-                .filter(|id| id.starts_with("project:") || id.starts_with("script:"))
+                .filter(|id| project_owner(id.as_bytes()))
                 .collect();
             (!owners.is_empty()).then_some((name, owners))
         })
@@ -39,6 +67,7 @@ pub(crate) fn project(
     })
 }
 
+#[cfg(not(verus_keep_ghost))]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Views {
@@ -47,12 +76,14 @@ struct Views {
     validate_inputs: bool,
 }
 
+#[cfg(not(verus_keep_ghost))]
 pub fn views(input: impl Read) -> Result<Value, String> {
     let data: Views = serde_json::from_reader(input).map_err(|e| e.to_string())?;
     let root = data.request.candidate.root.clone();
     crate::impact_views::projects(&root, data.request, data.originals, data.validate_inputs)
 }
 
+#[cfg(not(verus_keep_ghost))]
 #[derive(Deserialize)]
 #[serde(tag = "mode", rename_all = "kebab-case", deny_unknown_fields)]
 enum Evidence {
@@ -66,6 +97,7 @@ enum Evidence {
         effective_inputs: Value,
     },
 }
+#[cfg(not(verus_keep_ghost))]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Query {
@@ -74,6 +106,7 @@ struct Query {
     evidence: Evidence,
 }
 
+#[cfg(not(verus_keep_ghost))]
 pub fn evidence(root: &Path, input: impl Read) -> Result<Value, String> {
     let Query {
         request,
@@ -81,11 +114,7 @@ pub fn evidence(root: &Path, input: impl Read) -> Result<Value, String> {
         evidence,
     } = serde_json::from_reader(input).map_err(|e| e.to_string())?;
     request.validate()?;
-    let bound = &view["binding"];
-    if bound["base"] != request.base.commit
-        || bound["candidate"] != request.candidate.commit
-        || bound["registry"] != request.registries.digest
-    {
+    if !crate::facts::input_view_matches(&view, &request) {
         return Err("project input registration view binding mismatch".into());
     }
     let (old, current) = transition::load_view(&view, &request.config_path)?;
@@ -131,6 +160,7 @@ pub fn evidence(root: &Path, input: impl Read) -> Result<Value, String> {
     Ok(json!({"request_id":request.request_id,"effective_inputs":effective}))
 }
 
+#[cfg(not(verus_keep_ghost))]
 pub fn check_projects(input: impl Read) -> Result<Value, String> {
     let registry: Value = serde_json::from_reader(input).map_err(|e| e.to_string())?;
     crate::validate_projects(&registry)?;

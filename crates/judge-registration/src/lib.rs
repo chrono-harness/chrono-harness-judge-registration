@@ -12,7 +12,6 @@ pub mod classification_inputs;
 pub mod collection;
 #[cfg(not(verus_keep_ghost))]
 pub mod execution;
-#[cfg(not(verus_keep_ghost))]
 pub mod facts;
 pub(crate) mod historical_git;
 pub mod impact_views;
@@ -20,7 +19,6 @@ pub mod impact_views;
 mod input_coverage;
 #[cfg(not(verus_keep_ghost))]
 pub mod inputs;
-#[cfg(not(verus_keep_ghost))]
 pub mod project_views;
 #[cfg(not(verus_keep_ghost))]
 mod registrations;
@@ -30,7 +28,6 @@ pub mod wire;
 #[cfg(not(verus_keep_ghost))]
 pub use registrations::check_documents;
 pub mod ci_transition;
-#[cfg(not(verus_keep_ghost))]
 pub mod route_views;
 pub mod snapshot_queries;
 pub mod test_retirements;
