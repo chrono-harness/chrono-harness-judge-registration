@@ -1,4 +1,32 @@
+#![allow(unexpected_cfgs)]
+#[cfg(not(verus_keep_ghost))]
+use vstd::prelude::verus;
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
+
+verus! {
+/// Choose this entry only for its literal command and a single selector argument.
+pub(crate) fn classification_selector<T>(command: Option<&str>, selector: Option<T>, extra: usize)
+    -> (answer: Option<Result<T, &'static str>>)
+    ensures if command matches Some(name) && name@ == "classification-inputs-v1"@ {
+        match selector {
+            Some(argument) if extra == 0 => answer == Some(Ok::<T, &str>(argument)),
+            _ => answer matches Some(Err(message)) && message@ == "E_USAGE: classification-inputs-v1 SELECTOR"@,
+        }
+    } else { answer.is_none() },
+{
+    let Some(name) = command else { return None; };
+    if name != "classification-inputs-v1" { return None; }
+    match selector {
+        Some(argument) if extra == 0 => Some(Ok(argument)),
+        _ => Some(Err("E_USAGE: classification-inputs-v1 SELECTOR")),
+    }
+}
+}
+
+#[cfg(not(verus_keep_ghost))]
 use std::io::{Read, Write};
+#[cfg(not(verus_keep_ghost))]
 fn read_request() -> Result<Vec<u8>, String> {
     let mut bytes = Vec::new();
     if std::io::stdin()
@@ -12,6 +40,7 @@ fn read_request() -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
+#[cfg(not(verus_keep_ghost))]
 fn run(args: &[String]) -> Result<u8, String> {
     if args == ["--version"] {
         println!("chrono-judge-registration {}", env!("CARGO_PKG_VERSION"));
@@ -42,6 +71,7 @@ fn run(args: &[String]) -> Result<u8, String> {
     Ok(response.status.exit_code() as u8)
 }
 
+#[cfg(not(verus_keep_ghost))]
 fn protocol_cli() -> Result<u8, String> {
     use serde_json::{Value, json};
     use std::{
@@ -133,20 +163,23 @@ fn protocol_cli() -> Result<u8, String> {
     }
 }
 
+#[cfg(not(verus_keep_ghost))]
 fn main() -> std::process::ExitCode {
     use chrono_judge_registration::execution::ExecutionView;
     let mut args = std::env::args_os().skip(1);
     let operation = args.next();
     let argument = args.next();
-    if operation.as_deref() == Some(std::ffi::OsStr::new("classification-inputs-v1")) {
+    if let Some(selected) = classification_selector(
+        operation.as_deref().and_then(std::ffi::OsStr::to_str),
+        argument.as_ref(),
+        args.len(),
+    ) {
         let result = (|| {
-            let selector = argument
-                .filter(|_| args.next().is_none())
-                .ok_or("E_USAGE: classification-inputs-v1 SELECTOR")?;
+            let selector = selected?;
             let request = chrono_judge_registration::wire::decode(&read_request()?)?;
             let output = chrono_judge_registration::classification_inputs::query(
                 &request,
-                std::path::Path::new(&selector),
+                std::path::Path::new(selector),
             );
             let mut out = std::io::stdout().lock();
             serde_json::to_writer(&mut out, &output).map_err(|e| e.to_string())?;

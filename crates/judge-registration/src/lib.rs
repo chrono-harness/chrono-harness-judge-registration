@@ -6,10 +6,12 @@ pub use schema::validate_reference_syntax;
 #[cfg(not(verus_keep_ghost))]
 pub use schema::{ObjectFieldError, object_error_parts, reference_syntax, validate_object_fields};
 // Registration owns full-format schema, snapshot and affected-reference admissibility.
-#[cfg(not(verus_keep_ghost))]
 pub mod classification_inputs;
 #[cfg(not(verus_keep_ghost))]
 pub mod collection;
+#[cfg(verus_keep_ghost)]
+#[path = "main.rs"]
+pub(crate) mod entry;
 #[cfg(not(verus_keep_ghost))]
 pub mod execution;
 pub mod facts;
@@ -22,8 +24,7 @@ pub mod inputs;
 pub mod project_views;
 #[cfg(not(verus_keep_ghost))]
 mod registrations;
-#[cfg(not(verus_keep_ghost))]
-mod runner_session;
+pub(crate) mod runner_session;
 pub mod wire;
 #[cfg(not(verus_keep_ghost))]
 pub use registrations::check_documents;
@@ -43,7 +44,6 @@ pub mod verified_path_components;
 #[cfg(not(verus_keep_ghost))]
 pub mod verified_readiness;
 #[allow(unexpected_cfgs)]
-#[cfg(not(verus_keep_ghost))]
 pub mod verified_scheduling;
 pub mod workflow_views;
 #[cfg(not(verus_keep_ghost))]
@@ -58,8 +58,7 @@ pub use transition::{
 pub use verified_nodes::NodeKind;
 #[cfg(not(verus_keep_ghost))]
 pub mod initial;
-#[cfg(not(verus_keep_ghost))]
-mod schema;
+pub(crate) mod schema;
 #[cfg(not(verus_keep_ghost))]
 use crate::inputs::checked_path;
 #[cfg(not(verus_keep_ghost))]

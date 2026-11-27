@@ -1,8 +1,35 @@
 #![allow(unexpected_cfgs)]
+#[cfg(not(verus_keep_ghost))]
+use vstd::prelude::verus;
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
+
+verus! {
+/// Keep the scheduling decision and translate its specific field error to the caller's diagnostic.
+pub(crate) fn registration_limits(time: Option<u64>, size: Option<u64>)
+    -> (out: std::result::Result<(u64, u64), &'static str>)
+    ensures match (time, size) {
+        (Some(t), Some(n)) if t > 0 && n > 0 => out == Ok::<_, &str>((t, n)),
+        (None, _) | (Some(0), _) => out matches Err(message) && message@ == "invalid protocol timeout_seconds"@,
+        _ => out matches Err(message) && message@ == "invalid protocol stdout_limit_bytes"@,
+    },
+{
+    use super::verified_scheduling::{protocol_limits, ProtocolLimitError};
+    match protocol_limits(time, size) {
+        Ok(limits) => Ok(limits),
+        Err(ProtocolLimitError::Timeout) => Err("invalid protocol timeout_seconds"),
+        Err(ProtocolLimitError::Output) => Err("invalid protocol stdout_limit_bytes"),
+    }
+}
+}
+
+#[cfg(not(verus_keep_ghost))]
 #[path = "verified_object_fields.rs"]
 mod fields;
+#[cfg(not(verus_keep_ghost))]
 pub use fields::*;
 
+#[cfg(not(verus_keep_ghost))]
 #[path = "verified_reference_syntax.rs"]
 pub mod reference_syntax;
 #[cfg(not(verus_keep_ghost))]
@@ -276,15 +303,11 @@ fn edge(v: &Value, from: bool) -> Result {
 }
 #[cfg(not(verus_keep_ghost))]
 pub(crate) fn protocol_limits(protocol: &Value) -> std::result::Result<(u64, u64), String> {
-    use crate::verified_scheduling::{ProtocolLimitError, protocol_limits};
-    protocol_limits(
+    registration_limits(
         protocol["timeout_seconds"].as_u64(),
         protocol["stdout_limit_bytes"].as_u64(),
     )
-    .map_err(|error| match error {
-        ProtocolLimitError::Timeout => "invalid protocol timeout_seconds".into(),
-        ProtocolLimitError::Output => "invalid protocol stdout_limit_bytes".into(),
-    })
+    .map_err(String::from)
 }
 
 #[cfg(not(verus_keep_ghost))]

@@ -16,6 +16,62 @@ mod registration_contract;
 
 verus! {
 #[cfg(verus_keep_ghost)]
+fn classification_requires_exactly_one_selector() {
+    use registration::entry::classification_selector;
+    proof { reveal_strlit("classification-inputs-v1"); reveal_strlit("classification-views-v1"); }
+    let named = Some("classification-inputs-v1");
+    let allowed = classification_selector(named, Some(83u8), 0);
+    let absent = classification_selector(named, None::<u8>, 0);
+    let extra = classification_selector(named, Some(83u8), 1);
+    let different = classification_selector(Some("classification-views-v1"), Some(83u8), 0);
+    let unnamed = classification_selector(None, Some(83u8), 0);
+    assert(allowed == Some(Ok::<u8, &str>(83u8)));
+    assert(absent matches Some(Err(e)) && e@ == "E_USAGE: classification-inputs-v1 SELECTOR"@);
+    assert(extra matches Some(Err(e)) && e@ == "E_USAGE: classification-inputs-v1 SELECTOR"@);
+    assert(different.is_none() && unnamed.is_none());
+}
+
+#[cfg(verus_keep_ghost)]
+fn document_selection_preserves_a_known_document_and_requests_an_unknown_one() {
+    use registration::classification_inputs::selected_document;
+    let value = 16u8;
+    let known = selected_document(true, false, Some(&value));
+    let read = selected_document::<u8>(true, false, None);
+    let missing = selected_document(false, false, Some(&value));
+    let repeated = selected_document(true, true, Some(&value));
+    assert(known == Ok::<_, ()>(Some(&value)));
+    assert(read == Ok::<Option<&u8>, _>(None));
+    assert(missing == Err::<Option<&u8>, _>(()) && repeated == Err::<Option<&u8>, _>(()));
+}
+
+#[cfg(verus_keep_ghost)]
+fn command_record_keeps_the_unmodified_payload_after_one_header_line() {
+    use registration::runner_session::command_input;
+    broadcast use vstd::array::group_array_axioms;
+    let mut header = Vec::new(); header.push(b'{'); header.push(b'}');
+    let empty = command_input(header.clone(), &[]);
+    let payload = [0u8, b'\n', 255u8];
+    let framed = command_input(header, &payload);
+    assert(empty@ =~= seq![b'{', b'}', b'\n']);
+    assert(framed@ =~= seq![b'{', b'}', b'\n', 0u8, b'\n', 255u8]);
+}
+
+#[cfg(verus_keep_ghost)]
+fn protocol_reports_the_original_invalid_field_and_preserves_both_limits() {
+    use registration::schema::registration_limits;
+    let accepted = registration_limits(Some(17), Some(455));
+    let both_bad = registration_limits(None, Some(0));
+    let no_time = registration_limits(Some(0), Some(455));
+    let no_space = registration_limits(Some(17), None);
+    let zero_space = registration_limits(Some(17), Some(0));
+    assert(accepted == Ok::<_, &str>((17u64, 455u64)));
+    assert(both_bad matches Err(e) && e@ == "invalid protocol timeout_seconds"@);
+    assert(no_time matches Err(e) && e@ == "invalid protocol timeout_seconds"@);
+    assert(no_space matches Err(e) && e@ == "invalid protocol stdout_limit_bytes"@);
+    assert(zero_space matches Err(e) && e@ == "invalid protocol stdout_limit_bytes"@);
+}
+
+#[cfg(verus_keep_ghost)]
 fn input_view_requires_all_three_original_identities() {
     use registration::facts::InputViewIdentity;
     let id = InputViewIdentity { base: "base", candidate: "head", registry: "digest" };

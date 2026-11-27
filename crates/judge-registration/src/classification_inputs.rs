@@ -1,14 +1,37 @@
 //! Resolve caller-selected classification documents using one request-bound Git reader.
+#[cfg(not(verus_keep_ghost))]
+use vstd::prelude::verus;
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
+
+verus! {
+/// A selected path belongs to this endpoint exactly once. Keep its interpreted value if present.
+pub(crate) fn selected_document<T>(present: bool, duplicate: bool, known: Option<&T>)
+    -> (result: std::result::Result<Option<&T>, ()>)
+    ensures result == if present && !duplicate { Ok(known) } else { Err(()) },
+{
+    if !present || duplicate { return Err(()); }
+    Ok(known)
+}
+}
+
+#[cfg(not(verus_keep_ghost))]
 use crate::runner_session;
+#[cfg(not(verus_keep_ghost))]
 use crate::wire::Request;
+#[cfg(not(verus_keep_ghost))]
 use crate::{historical_git::InstalledGit, transition::installed_views};
+#[cfg(not(verus_keep_ghost))]
 use serde::Deserialize;
+#[cfg(not(verus_keep_ghost))]
 use serde_json::{Value, json};
+#[cfg(not(verus_keep_ghost))]
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::Path,
 };
 
+#[cfg(not(verus_keep_ghost))]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Plan {
@@ -17,6 +40,7 @@ struct Plan {
     context: Value,
 }
 
+#[cfg(not(verus_keep_ghost))]
 /// Resolve known interpreted documents before consulting the selected endpoint's blob reader.
 pub fn documents(
     selected: &[String],
@@ -26,13 +50,14 @@ pub fn documents(
 ) -> Result<BTreeMap<String, Value>, String> {
     let mut docs = BTreeMap::new();
     for path in selected {
-        if !present.contains(path.as_str()) || docs.contains_key(path) {
-            return Err(format!(
-                "E_SEMANTIC_INPUT: invalid selected document {path}"
-            ));
-        }
+        let source = selected_document(
+            present.contains(path.as_str()),
+            docs.contains_key(path),
+            known.get(path),
+        )
+        .map_err(|()| format!("E_SEMANTIC_INPUT: invalid selected document {path}"))?;
         crate::schema::relative_path(path)?;
-        let doc = match known.get(path) {
+        let doc = match source {
             Some(doc) => doc.clone(),
             None => crate::wire::decode(&read(path)?)
                 .map_err(|error| format!("E_SEMANTIC_INPUT: {path}: {error}"))?,
@@ -42,6 +67,7 @@ pub fn documents(
     Ok(docs)
 }
 
+#[cfg(not(verus_keep_ghost))]
 fn prepare(req: &Request, reader: &InstalledGit, selector: &Path) -> Result<Value, String> {
     let (a, b, _) = installed_views(req, reader, None)?;
     let changed = req.delta.iter().map(|d| d.path.as_str()).collect();
@@ -122,6 +148,7 @@ fn prepare(req: &Request, reader: &InstalledGit, selector: &Path) -> Result<Valu
     )
 }
 
+#[cfg(not(verus_keep_ghost))]
 /// Judge pipeline input producer. Data errors preserve every completed Git read.
 pub fn query(req: &Request, selector: &Path) -> Value {
     let mut outputs = BTreeMap::new();
