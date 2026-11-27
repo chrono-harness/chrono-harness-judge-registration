@@ -1,9 +1,30 @@
 //! Explicit domain coverage; it validates declarations, never discovers reads.
+#[cfg(not(verus_keep_ghost))]
+use vstd::prelude::verus;
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
+
+verus! {
+/// A required row is accepted only when its consumer/domain pair was newly inserted.
+pub(crate) fn admit_row<F>(required: bool, insert: F) -> (admitted: bool)
+    where F: FnOnce() -> bool,
+    requires required ==> insert.requires(()),
+    ensures if required { insert.ensures((), admitted) } else { !admitted },
+{
+    if required { insert() } else { false }
+}
+}
+
+#[cfg(not(verus_keep_ghost))]
 use crate::wire::Response;
+#[cfg(not(verus_keep_ghost))]
 use crate::{NodeKind, Registrations, issue, schema};
+#[cfg(not(verus_keep_ghost))]
 use serde_json::Value;
+#[cfg(not(verus_keep_ghost))]
 use std::collections::{BTreeMap, BTreeSet};
 
+#[cfg(not(verus_keep_ghost))]
 pub(crate) fn shape(coverage: &Value, closure: &Value) -> Result<(), String> {
     schema::object(coverage, &["schema", "required", "rows"], &[])?;
     if coverage["schema"] != "chrono-input-coverage/v1" {
@@ -47,7 +68,7 @@ pub(crate) fn shape(coverage: &Value, closure: &Value) -> Result<(), String> {
         let consumer = schema::string(&row["consumer"])?;
         let domain = schema::string(&row["domain"])?;
         let key = (consumer, domain);
-        if !required.contains(&key) || !seen.insert(key) {
+        if !admit_row(required.contains(&key), || seen.insert(key)) {
             return Err(format!(
                 "unknown or duplicate coverage row {consumer}/{domain}"
             ));
@@ -91,6 +112,7 @@ pub(crate) fn shape(coverage: &Value, closure: &Value) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(not(verus_keep_ghost))]
 pub(crate) fn validate(registrations: &Registrations, response: &mut Response) {
     let closure = &registrations.config()["input_closure"];
     let Some(coverage) = closure.get("coverage") else {

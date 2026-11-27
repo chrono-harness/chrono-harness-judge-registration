@@ -16,6 +16,82 @@ mod registration_contract;
 
 verus! {
 #[cfg(verus_keep_ghost)]
+fn first_inventory_requires_all_proposed_documents_and_inactive_enforcement() {
+    use registration::initial::initial_state;
+    broadcast use vstd::array::group_array_axioms;
+    proof { reveal_strlit("proposed"); reveal_strlit("active"); reveal_strlit("not-implemented"); }
+    let pending = Some("proposed");
+    let statuses = [pending; 5];
+    let accepted = initial_state(statuses, Some("not-implemented"));
+    let active = initial_state(statuses, Some("active"));
+    let absent = initial_state(statuses, None);
+    assert(accepted && !active && !absent);
+    for i in 0..5usize {
+        let mut changed = statuses;
+        changed[i] = Some("active");
+        assert(changed@[i as int] == Some("active"));
+        assert(!registration::facts::same_text(changed@[i as int], "proposed"));
+        let accepted = initial_state(changed, Some("not-implemented"));
+        assert(!accepted);
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+fn document_lookup_preserves_the_path_and_its_bytes() {
+    use registration::registrations::registered_document;
+    let original = 73u8;
+    let fetch = |p: &str| -> (r: Option<&u8>) ensures
+        r == (if p@ == "registered"@ { Some(&original) } else { None }),
+    { if p == "registered" { Some(&original) } else { None } };
+    proof { reveal_strlit("other"); reveal_strlit("registered"); }
+    let good = registered_document(Some("registered"), fetch);
+    let absent = registered_document(Some("other"), fetch);
+    let no_path = registered_document(None, fetch);
+    assert(good == Ok::<_, &str>(&original));
+    assert(absent matches Err(e) && e@ == "missing registry bytes"@);
+    assert(no_path matches Err(e) && e@ == "missing registry path"@);
+}
+
+#[cfg(verus_keep_ghost)]
+fn worktree_requires_validation_before_accepting_its_declared_filemap() {
+    use registration::worktree::admitted_filemap;
+    let accepted = admitted_filemap(Ok(()), Some("map.json"));
+    let absent = admitted_filemap(Ok(()), None);
+    let wrong = admitted_filemap(Err("config error".to_string()), Some("map.json"));
+    let both = admitted_filemap(Err("config error".to_string()), None);
+    assert(accepted == Ok::<_, String>("map.json"));
+    assert(absent matches Err(e) && e@ == "missing filemap registry path"@);
+    assert(wrong matches Err(e) && e@ == "config error"@);
+    assert(both matches Err(e) && e@ == "config error"@);
+}
+
+#[cfg(verus_keep_ghost)]
+fn omitted_units_skip_the_reader_and_declared_units_preserve_its_outcome() {
+    use registration::collection::declared_units;
+    let unused = || -> (r: Result<Option<u8>, u8>) requires false, { Ok(None) };
+    let units = || -> (r: Result<Option<u8>, u8>) ensures r == Ok::<_,u8>(Some(81u8)), { Ok(Some(81)) };
+    let failed = || -> (r: Result<Option<u8>, u8>) ensures r == Err::<Option<u8>,_>(15u8), { Err(15) };
+    let absent = declared_units(false, unused);
+    let present = declared_units(true, units);
+    let error = declared_units(true, failed);
+    assert(absent == Ok::<Option<u8>, u8>(None));
+    assert(present == Ok::<_, u8>(Some(81u8)));
+    assert(error == Err::<Option<u8>, _>(15u8));
+}
+
+#[cfg(verus_keep_ghost)]
+fn coverage_marks_required_rows_only_once() {
+    use registration::input_coverage::admit_row;
+    let not_registered = || -> (inserted: bool) requires false, { true };
+    let new_row = || -> (inserted: bool) ensures inserted, { true };
+    let already_present = || -> (inserted: bool) ensures !inserted, { false };
+    let unknown = admit_row(false, not_registered);
+    let first = admit_row(true, new_row);
+    let duplicate = admit_row(true, already_present);
+    assert(first && !duplicate && !unknown);
+}
+
+#[cfg(verus_keep_ghost)]
 fn classification_requires_exactly_one_selector() {
     use registration::entry::classification_selector;
     proof { reveal_strlit("classification-inputs-v1"); reveal_strlit("classification-views-v1"); }
