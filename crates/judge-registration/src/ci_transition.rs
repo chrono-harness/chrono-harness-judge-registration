@@ -1,13 +1,44 @@
 //! Scoped CI consumes only candidate execution tools, the conversion and selected retirements.
+#[cfg(not(verus_keep_ghost))]
+use vstd::prelude::verus;
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
+
+verus! {
+/// CI exposes a completed Git observation only when the originating request supplied a binding.
+pub(crate) fn complete_transition<T, O, E>(
+    action: Result<T, E>, closed: Result<Option<O>, E>, requested: bool,
+) -> (out: (Result<T, E>, Option<O>))
+    ensures match closed {
+        Ok(observation) => out.0 == action && out.1 == (if requested { observation } else { None }),
+        Err(close_error) => out.1.is_none() && out.0 == match action {
+            Err(action_error) => Err::<T, E>(action_error),
+            Ok(_) => Err::<T, E>(close_error),
+        },
+    },
+{
+    super::historical_git::complete_read(action, closed, |observation: Option<O>| -> (retained: Option<O>)
+        ensures retained == (if requested { observation } else { None }),
+    {
+        if requested { observation } else { None }
+    })
+}
+}
+
+#[cfg(not(verus_keep_ghost))]
 use crate::{Registrations, facts, historical_git::InstalledGit, transition};
+#[cfg(not(verus_keep_ghost))]
 use serde::Deserialize;
+#[cfg(not(verus_keep_ghost))]
 use serde_json::{Value, json};
+#[cfg(not(verus_keep_ghost))]
 use std::{
     collections::{BTreeMap, BTreeSet},
     io::Read,
     path::Path,
 };
 
+#[cfg(not(verus_keep_ghost))]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Query {
@@ -20,6 +51,7 @@ struct Query {
     git: Option<Binding>,
 }
 
+#[cfg(not(verus_keep_ghost))]
 #[derive(Deserialize)]
 #[serde(rename_all = "kebab-case")]
 enum Mode {
@@ -30,6 +62,7 @@ enum Mode {
     },
 }
 
+#[cfg(not(verus_keep_ghost))]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Binding {
@@ -37,6 +70,7 @@ struct Binding {
     git_facts: Value,
 }
 
+#[cfg(not(verus_keep_ghost))]
 fn retirements(
     old: &Registrations,
     new: &Registrations,
@@ -73,6 +107,7 @@ fn retirements(
     Ok(json!(rows))
 }
 
+#[cfg(not(verus_keep_ghost))]
 pub fn query(root: &Path, input: impl Read) -> Result<Value, String> {
     let Query {
         config,
@@ -134,13 +169,11 @@ pub fn query(root: &Path, input: impl Read) -> Result<Value, String> {
         .and_then(Result::ok)
         .map(InstalledGit::finish)
         .transpose();
-    let (result, observed) = match receipt {
-        Ok(observed) => (result, git.and(observed)),
-        Err(error) => (result.and(Err(error)), None),
-    };
+    let (result, observed) = complete_transition(result, receipt, git.is_some());
     Ok(json!({"previous":base,"candidate":candidate,"git_facts":observed,"result":result}))
 }
 
+#[cfg(not(verus_keep_ghost))]
 pub(crate) fn planning(old: &Registrations, new: &Registrations) -> Value {
     json!({"previous":crate::route_views::endpoint(old),
         "candidate":crate::route_views::endpoint(new),"test_operations":new.test_operations()})
