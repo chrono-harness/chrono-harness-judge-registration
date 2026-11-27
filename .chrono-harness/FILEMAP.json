@@ -851,7 +851,20 @@
           "kind": "test-execution",
           "to": "test:judge-registration-tests"
         }
-      ]
+      ],
+      "verification": {
+        "role": "program",
+        "roots": [
+          {
+            "path": "crates/judge-registration/src/execution.rs",
+            "operation": "verify.registration-scheduling"
+          },
+          {
+            "path": "crates/judge-registration-tests/tests/verified_scheduling.rs",
+            "operation": "verify.registration-scheduling-tests"
+          }
+        ]
+      }
     },
     {
       "path": "crates/judge-registration/src/facts.rs",
@@ -1224,7 +1237,7 @@
         "role": "program",
         "roots": [
           {
-            "path": "crates/judge-registration/src/verified_scheduling.rs",
+            "path": "crates/judge-registration/src/execution.rs",
             "operation": "verify.registration-scheduling"
           },
           {

@@ -1,5 +1,5 @@
 //! full 检查直接消费的登记状态与输入闭合判断。
-use vstd::{contrib::exec_spec::ExecSpecEq, prelude::*};
+use vstd::prelude::*;
 
 verus! {
 
@@ -39,6 +39,7 @@ pub fn validator_reaches(graph: &[Vec<Option<usize>>], validator: Option<usize>,
         _ => false,
     },
 {
+    broadcast use vstd::std_specs::btree::group_btree_axioms;
     let (Some(start), Some(goal)) = (validator, target) else { return false; };
     if start == goal { return false; }
     let ghost intended = walk(graph@, seq![start], Set::empty(), goal, steps as nat);
@@ -48,6 +49,7 @@ pub fn validator_reaches(graph: &[Vec<Option<usize>>], validator: Option<usize>,
     let mut remaining = steps;
     while remaining > 0 && pending.len() > 0
         invariant validator == Some(start), target == Some(goal), start != goal,
+            vstd::std_specs::btree::btree_set_inv(&seen),
             walk(graph@, pending@, seen@, goal, remaining as nat) == intended,
             intended == walk(graph@, seq![start], Set::empty(), goal, steps as nat),
         decreases remaining,
@@ -105,7 +107,7 @@ pub fn registry_active(status: Option<&str>) -> (ready: bool)
     ensures ready == active(status),
 {
     match status {
-        Some(text) => <&str>::exec_eq(text, "active"),
+        Some(text) => text == "active",
         None => false,
     }
 }
@@ -123,8 +125,8 @@ pub fn input_ready<T>(
 ) -> (ready: bool)
     ensures ready == ready_inputs(enforcement, closure, unresolved),
 {
-    (match enforcement { Some(text) => <&str>::exec_eq(text, "enabled"), None => false })
-        && (match closure { Some(text) => <&str>::exec_eq(text, "declared-complete"), None => false })
+    (match enforcement { Some(text) => text == "enabled", None => false })
+        && (match closure { Some(text) => text == "declared-complete", None => false })
         && (match unresolved { Some(inputs) => inputs.len() == 0, None => false })
 }
 
@@ -146,7 +148,7 @@ pub fn endpoint_snapshot_matches(
 {
     if schema_present || files > 0 || (strict_environment && inherited > 0) {
         match actual {
-            Some(text) => <&str>::exec_eq(text, expected),
+            Some(text) => text == expected,
             None => false,
         }
     } else {

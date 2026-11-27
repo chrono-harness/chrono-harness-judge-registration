@@ -1,11 +1,14 @@
 //! 独立边界：缺少参与操作的声明须拒绝，额外声明和值不影响覆盖。
 #![allow(unexpected_cfgs)]
 #[cfg(verus_keep_ghost)]
-#[path = "../../judge-registration/src/verified_scheduling.rs"]
-mod policy;
+#[path = "../../judge-registration/src/execution.rs"]
+mod execution;
+#[cfg(not(verus_keep_ghost))]
+use chrono_judge_registration::execution;
 #[cfg(not(verus_keep_ghost))]
 use chrono_judge_registration::verified_scheduling as policy;
-use std::collections::{BTreeMap, BTreeSet};
+#[cfg(verus_keep_ghost)]
+use execution::verified_scheduling as policy;
 #[cfg(not(verus_keep_ghost))]
 use vstd::prelude::verus;
 #[cfg(verus_keep_ghost)]
@@ -54,9 +57,9 @@ fn execution_plan_limits_are_inclusive_and_require_time_and_output() {
     let ok = zero_output.valid(limit); assert(!ok);
 }
 
-// Use the same abstract key twice for a duplicate. The wire query exercises separately decoded names.
+// The same wire name compares equal across independently allocated strings.
 proof fn selected_and_overridden_operations(first: String, second: String, blank: String)
-    requires first@.len() > 0, second@.len() > 0, first != second, blank@.len() == 0,
+    requires first@.len() > 0, second@.len() > 0, first@ != second@, blank@.len() == 0,
 {
     let selected = seq![first, second];
     let upper = policy::Bounds { timeout_seconds: 1, output_limit_bytes: 64 };
@@ -71,38 +74,41 @@ proof fn selected_and_overridden_operations(first: String, second: String, blank
 
 #[cfg_attr(not(verus_keep_ghost), test)]
 fn coverage_requires_all_participants_and_allows_production_claims() {
-    let empty: BTreeSet<usize> = BTreeSet::new();
-    let mut operations: BTreeSet<usize> = BTreeSet::new();
-    operations.insert(2);
-    operations.insert(4);
-    let mut claims: BTreeMap<usize, bool> = BTreeMap::new();
+    let a = "build".to_owned();
+    let copy = "build".to_owned();
+    let b = "publish".to_owned();
+    let extra = "release".to_owned();
+    proof { reveal_strlit("build"); reveal_strlit("publish"); reveal_strlit("release"); }
+    let operations = vec![&a, &b, &a];
+    let empty: Vec<&String> = Vec::new();
+    let mut claims: Vec<&String> = Vec::new();
 
-    let empty_covered = policy::claims_cover_operations(&empty, &claims);
-    assert(empty_covered);
-    let absent = policy::claims_cover_operations(&operations, &claims);
-    assert(!absent);
-
-    claims.insert(2, true);
-    let missing_last = policy::claims_cover_operations(&operations, &claims);
-    assert(!missing_last);
-    claims.insert(9, false);
-    let equal_count_wrong_keys = policy::claims_cover_operations(&operations, &claims);
-    assert(!equal_count_wrong_keys);
-
-    claims.insert(4, true);
-    let extra_production_claim = policy::claims_cover_operations(&operations, &claims);
-    assert(extra_production_claim);
-    let no_participants = policy::claims_cover_operations(&empty, &claims);
-    assert(no_participants);
-    operations.insert(9);
-    let false_value_is_still_a_claim = policy::claims_cover_operations(&operations, &claims);
-    assert(false_value_is_still_a_claim);
-
-    operations.insert(1);
-    assert(operations@.contains(1usize));
-    assert(!claims@.contains_key(1usize));
-    let missing_first = policy::claims_cover_operations(&operations, &claims);
-    assert(!missing_first);
+    let empty_covered = execution::claims_cover_operations(&empty, &claims);
+    expect_protocol(empty_covered);
+    let missing_all = execution::claims_cover_operations(&operations, &claims);
+    assert(operations@[0]@ == a@);
+    assert(!execution::claim_named(claims@, a@));
+    expect_protocol(!missing_all);
+    claims.push(&copy);
+    claims.push(&extra);
+    let missing_last = execution::claims_cover_operations(&operations, &claims);
+    assert(operations@[1]@ == b@);
+    assert(!execution::claim_named(claims@, b@));
+    expect_protocol(!missing_last);
+    claims.push(&b);
+    let all_covered = execution::claims_cover_operations(&operations, &claims);
+    assert forall|i: int| 0 <= i < operations.len() implies execution::claim_named(claims@, #[trigger] operations@[i]@) by {
+        if i == 1 { assert(claims@[2]@ == operations@[i]@); }
+        else { assert(claims@[0]@ == operations@[i]@); }
+    }
+    expect_protocol(all_covered);
+    let no_participants = execution::claims_cover_operations(&empty, &claims);
+    expect_protocol(no_participants);
+    let last_only = vec![&b];
+    let pair = vec![&extra, &b];
+    let missing_first = execution::claims_cover_operations(&pair, &last_only);
+    assert(!execution::claim_named(last_only@, pair@[0]@));
+    expect_protocol(!missing_first);
 }
 
 }

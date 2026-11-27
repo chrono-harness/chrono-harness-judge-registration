@@ -16,7 +16,7 @@ test = false
 bench = false
 
 [dependencies]
-vstd = "=0.0.0-2026-04-20-1748"
+vstd = "=0.0.0-2026-11-22-0344"
 serde_yaml_ng = "=0.10.0"
 litrs = "=1.0.1"
 sha2 = "0.11"

@@ -92,7 +92,7 @@ use std::{
 #[cfg(not(verus_keep_ghost))]
 pub const PROJECTS_INPUT_LIMIT: usize = 64 * 1024 * 1024;
 
-use vstd::{contrib::exec_spec::ExecSpecEq, prelude::*};
+use vstd::prelude::*;
 
 verus! {
 /// Judge the observed checkout after removing the candidate's artifact directories.
@@ -100,7 +100,7 @@ pub fn checkout_is_dirty(observed: &str, candidate: &str, tracked_count: usize, 
     -> (dirty: bool)
     ensures dirty == (observed@ != candidate@ || tracked_count != 0 || nonartifact != 0),
 {
-    !<&str>::exec_eq(observed, candidate) || tracked_count != 0 || nonartifact != 0
+    observed != candidate || tracked_count != 0 || nonartifact != 0
 }
 }
 

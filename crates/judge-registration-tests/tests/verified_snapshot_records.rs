@@ -1,6 +1,6 @@
 //! Exercise registration's production parser with malformed and exact retained records.
 #![allow(unexpected_cfgs)]
-use vstd::{contrib::exec_spec::ExecSpecEq, prelude::*};
+use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 use vstd::{string::StringSliceAdditionalSpecFns, vpanic as panic};
 #[cfg(verus_keep_ghost)]
@@ -65,7 +65,7 @@ fn object_shape_reports_the_first_required_field_without_any_keys() {
     let result = policy::validate_object_fields(Some(7u64), &required, &[], &keys);
     match result {
         Err(policy::ObjectFieldError::Missing(name)) => {
-            let first = <&str>::exec_eq(name, "first");
+            let first = name == "first";
             expect(first);
         },
         _ => { expect(false); },
@@ -81,7 +81,7 @@ fn object_shape_missing_required_precedes_an_unknown_key() {
     let result = policy::validate_object_fields(Some(1u64), &["required"], &[], &["unknown"]);
     match result {
         Err(policy::ObjectFieldError::Missing(name)) => {
-            let same = <&str>::exec_eq(name, "required");
+            let same = name == "required";
             expect(same);
         },
         _ => { expect(false); },
@@ -100,7 +100,7 @@ fn object_shape_reports_the_first_unknown_key_after_all_required_fields() {
     );
     match result {
         Err(policy::ObjectFieldError::Unknown(name)) => {
-            let same = <&str>::exec_eq(name, "first");
+            let same = name == "first";
             expect(same);
         },
         _ => { expect(false); },
@@ -109,12 +109,12 @@ fn object_shape_reports_the_first_unknown_key_after_all_required_fields() {
 
 fn object_shape_errors_preserve_the_complete_field_name(name: &str) {
     let missing = policy::object_error_parts(policy::ObjectFieldError::Missing(name));
-    let prefix = <&str>::exec_eq(missing[0], "missing field ");
-    let field = <&str>::exec_eq(missing[1], name);
+    let prefix = missing[0] == "missing field ";
+    let field = missing[1] == name;
     expect(prefix && field);
     let unknown = policy::object_error_parts(policy::ObjectFieldError::Unknown(name));
-    let prefix = <&str>::exec_eq(unknown[0], "unknown field ");
-    let field = <&str>::exec_eq(unknown[1], name);
+    let prefix = unknown[0] == "unknown field ";
+    let field = unknown[1] == name;
     expect(prefix && field);
 }
 
@@ -123,8 +123,8 @@ fn object_shape_error_messages_keep_empty_unicode_nul_and_newline_names() {
     object_shape_errors_preserve_the_complete_field_name("");
     object_shape_errors_preserve_the_complete_field_name("字段\0original\nname");
     let expected = policy::object_error_parts(policy::ObjectFieldError::ExpectedObject);
-    let prefix = <&str>::exec_eq(expected[0], "expected object");
-    let suffix = <&str>::exec_eq(expected[1], "");
+    let prefix = expected[0] == "expected object";
+    let suffix = expected[1] == "";
     expect(prefix && suffix);
 }
 
@@ -146,7 +146,7 @@ fn retained_absence_checks_fields_before_the_boolean_value() {
     let result = policy::select_retained(observed);
     match result {
         Err(policy::RetainedError::Fields(policy::ObjectFieldError::Unknown(name))) => {
-            let exact = <&str>::exec_eq(name, "bytes");
+            let exact = name == "bytes";
             expect(exact);
         },
         _ => { expect(false); },
@@ -277,7 +277,7 @@ fn retained_bytes_decode_once_after_fields_and_keep_success_or_failure() {
     expect(calls.len() == 0);
     match result {
         Err(policy::RetainedError::Fields(policy::ObjectFieldError::Unknown(name))) => {
-            let exact = <&str>::exec_eq(name, "unexpected");
+            let exact = name == "unexpected";
             expect(exact);
         },
         _ => { expect(false); },
@@ -310,10 +310,22 @@ fn retained_blob_requires_fields_before_path_digest_or_length_checks() {
     expect(calls.len() == 0);
     match result {
         Err(policy::RetainedError::Fields(policy::ObjectFieldError::Missing(name))) => {
-            let exact = <&str>::exec_eq(name, "sha256");
+            let exact = name == "sha256";
             expect(exact);
         },
         _ => { expect(false); },
+    }
+}
+
+#[cfg_attr(not(verus_keep_ghost), test)]
+fn retained_blob_reports_the_first_unknown_field_before_checking_values() {
+    proof {
+        reveal_strlit("blob"); reveal_strlit("sha256"); reveal_strlit("length");
+        reveal_strlit("unknown");
+        assert("unknown"@.len() != "blob"@.len());
+        assert("unknown"@.len() != "sha256"@.len());
+        assert("unknown"@.len() != "length"@.len());
+        reveal(policy::retained_selection);
     }
     let unknown = policy::RetainedObservation::<u64> {
         object: true, keys: vec!["blob", "sha256", "length", "unknown", ""], absent: None,
@@ -322,7 +334,7 @@ fn retained_blob_requires_fields_before_path_digest_or_length_checks() {
     let result = policy::select_retained(unknown);
     match result {
         Err(policy::RetainedError::Fields(policy::ObjectFieldError::Unknown(name))) => {
-            let exact = <&str>::exec_eq(name, "unknown");
+            let exact = name == "unknown";
             expect(exact);
         },
         _ => { expect(false); },
@@ -341,8 +353,8 @@ fn retained_blob_boundaries(path: &str, digest: &str, length: u64)
     expect(calls.len() == 0);
     match result {
         Ok(policy::Retained::Blob { path: actual_path, digest: actual_digest, length: actual_length }) => {
-            let same_path = <&str>::exec_eq(actual_path, path);
-            let same_digest = <&str>::exec_eq(actual_digest, digest);
+            let same_path = actual_path == path;
+            let same_digest = actual_digest == digest;
             expect(same_path && same_digest && actual_length == length);
         },
         _ => { expect(false); },
@@ -430,9 +442,9 @@ fn retained_error_has_exact_parts(error: policy::RetainedError, head: &str, suff
         suffix@ == policy::retained_error_suffix(error),
 {
     let parts = error.parts();
-    let prefix = <&str>::exec_eq(parts[0], "E_INPUT_BLOB: ");
-    let body = <&str>::exec_eq(parts[1], head);
-    let field = <&str>::exec_eq(parts[2], suffix);
+    let prefix = parts[0] == "E_INPUT_BLOB: ";
+    let body = parts[1] == head;
+    let field = parts[2] == suffix;
     expect(prefix && body && field);
 }
 

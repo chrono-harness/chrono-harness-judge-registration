@@ -34,8 +34,8 @@
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
-            "version": "0.2026.04.24.f8e1704",
-            "commit": "f8e17045c4ac17a02e566b8997070f2eecc255be"
+            "version": "0.2026.11.22.1ce6a59",
+            "commit": "1ce6a59bd72713cf486a7660097fe5ac57519617"
           }
         },
         "verify_nodes": {
@@ -56,8 +56,8 @@
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
-            "version": "0.2026.04.24.f8e1704",
-            "commit": "f8e17045c4ac17a02e566b8997070f2eecc255be"
+            "version": "0.2026.11.22.1ce6a59",
+            "commit": "1ce6a59bd72713cf486a7660097fe5ac57519617"
           }
         },
         "verify_readiness": {
@@ -78,8 +78,8 @@
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
-            "version": "0.2026.04.24.f8e1704",
-            "commit": "f8e17045c4ac17a02e566b8997070f2eecc255be"
+            "version": "0.2026.11.22.1ce6a59",
+            "commit": "1ce6a59bd72713cf486a7660097fe5ac57519617"
           }
         },
         "verify_input_coverage": {
@@ -100,8 +100,8 @@
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
-            "version": "0.2026.04.24.f8e1704",
-            "commit": "f8e17045c4ac17a02e566b8997070f2eecc255be"
+            "version": "0.2026.11.22.1ce6a59",
+            "commit": "1ce6a59bd72713cf486a7660097fe5ac57519617"
           }
         },
         "verify_scheduling": {
@@ -116,14 +116,14 @@
             "--output-json",
             "--compile",
             "--emit=link={operation_state}/verify.registration-scheduling.rlib,dep-info={operation_state}/verify.registration-scheduling.rlib.d",
-            "crates/judge-registration/src/verified_scheduling.rs",
+            "crates/judge-registration/src/execution.rs",
             "-o",
             "{operation_state}/verify.registration-scheduling.rlib",
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
-            "version": "0.2026.04.24.f8e1704",
-            "commit": "f8e17045c4ac17a02e566b8997070f2eecc255be"
+            "version": "0.2026.11.22.1ce6a59",
+            "commit": "1ce6a59bd72713cf486a7660097fe5ac57519617"
           }
         }
       },
@@ -155,8 +155,8 @@
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
-            "version": "0.2026.04.24.f8e1704",
-            "commit": "f8e17045c4ac17a02e566b8997070f2eecc255be"
+            "version": "0.2026.11.22.1ce6a59",
+            "commit": "1ce6a59bd72713cf486a7660097fe5ac57519617"
           }
         },
         "verify_nodes_tests": {
@@ -177,8 +177,8 @@
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
-            "version": "0.2026.04.24.f8e1704",
-            "commit": "f8e17045c4ac17a02e566b8997070f2eecc255be"
+            "version": "0.2026.11.22.1ce6a59",
+            "commit": "1ce6a59bd72713cf486a7660097fe5ac57519617"
           }
         },
         "verify_readiness_tests": {
@@ -199,8 +199,8 @@
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
-            "version": "0.2026.04.24.f8e1704",
-            "commit": "f8e17045c4ac17a02e566b8997070f2eecc255be"
+            "version": "0.2026.11.22.1ce6a59",
+            "commit": "1ce6a59bd72713cf486a7660097fe5ac57519617"
           }
         },
         "verify_input_coverage_tests": {
@@ -221,8 +221,8 @@
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
-            "version": "0.2026.04.24.f8e1704",
-            "commit": "f8e17045c4ac17a02e566b8997070f2eecc255be"
+            "version": "0.2026.11.22.1ce6a59",
+            "commit": "1ce6a59bd72713cf486a7660097fe5ac57519617"
           }
         },
         "verify_scheduling_tests": {
@@ -243,8 +243,8 @@
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
-            "version": "0.2026.04.24.f8e1704",
-            "commit": "f8e17045c4ac17a02e566b8997070f2eecc255be"
+            "version": "0.2026.11.22.1ce6a59",
+            "commit": "1ce6a59bd72713cf486a7660097fe5ac57519617"
           }
         },
         "verify_snapshot_header_tests": {
@@ -265,8 +265,8 @@
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
-            "version": "0.2026.04.24.f8e1704",
-            "commit": "f8e17045c4ac17a02e566b8997070f2eecc255be"
+            "version": "0.2026.11.22.1ce6a59",
+            "commit": "1ce6a59bd72713cf486a7660097fe5ac57519617"
           }
         },
         "verify_snapshot_records_tests": {
@@ -287,8 +287,8 @@
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
-            "version": "0.2026.04.24.f8e1704",
-            "commit": "f8e17045c4ac17a02e566b8997070f2eecc255be"
+            "version": "0.2026.11.22.1ce6a59",
+            "commit": "1ce6a59bd72713cf486a7660097fe5ac57519617"
           }
         },
         "verify_reference_syntax_tests": {
@@ -309,8 +309,8 @@
             "-Zchecksum-hash-algorithm=sha256"
           ],
           "output_contract": {
-            "version": "0.2026.04.24.f8e1704",
-            "commit": "f8e17045c4ac17a02e566b8997070f2eecc255be"
+            "version": "0.2026.11.22.1ce6a59",
+            "commit": "1ce6a59bd72713cf486a7660097fe5ac57519617"
           }
         },
         "execute": {
