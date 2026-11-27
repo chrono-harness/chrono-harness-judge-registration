@@ -1,14 +1,55 @@
+#![allow(unexpected_cfgs)]
+#[cfg(not(verus_keep_ghost))]
 use chrono_judge_registration::wire::{self, sha256};
+#[cfg(not(verus_keep_ghost))]
 #[path = "support/request_fixture.rs"]
 mod request_fixture;
+#[cfg(not(verus_keep_ghost))]
 use chrono_registration_fixture as support;
+#[cfg(not(verus_keep_ghost))]
 use serde_json::{Value, json};
+#[cfg(not(verus_keep_ghost))]
 use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
 };
+#[cfg(not(verus_keep_ghost))]
 use tempfile::TempDir;
+
+#[cfg(verus_keep_ghost)]
+use super::policy;
+#[cfg(not(verus_keep_ghost))]
+use chrono_judge_registration::verified_path_components as policy;
+use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+use vstd::vpanic as panic;
+
+verus! {
+fn metadata_expect(accepted: bool)
+    requires accepted,
+{
+    if !accepted { panic!(); }
+}
+
+#[cfg_attr(not(verus_keep_ghost), test)]
+fn metadata_acceptance_distinguishes_all_ascii_cases_from_neighbors() {
+    broadcast use vstd::array::group_array_axioms;
+    metadata_expect(policy::is_git_metadata(&[46u8, 103u8, 105u8, 116u8]));
+    metadata_expect(policy::is_git_metadata(&[46u8, 103u8, 105u8, 84u8]));
+    metadata_expect(policy::is_git_metadata(&[46u8, 103u8, 73u8, 116u8]));
+    metadata_expect(policy::is_git_metadata(&[46u8, 103u8, 73u8, 84u8]));
+    metadata_expect(policy::is_git_metadata(&[46u8, 71u8, 105u8, 116u8]));
+    metadata_expect(policy::is_git_metadata(&[46u8, 71u8, 105u8, 84u8]));
+    metadata_expect(policy::is_git_metadata(&[46u8, 71u8, 73u8, 116u8]));
+    metadata_expect(policy::is_git_metadata(&[46u8, 71u8, 73u8, 84u8]));
+    metadata_expect(!policy::is_git_metadata(&[46u8, 103, 105, 116, 104, 117, 98]));
+    metadata_expect(!policy::is_git_metadata(&[120u8, 46, 103, 105, 116]));
+    metadata_expect(!policy::is_git_metadata(&[46u8, 103, 105]));
+    metadata_expect(!policy::is_git_metadata(&[46u8, 103, 105, 117]));
+    metadata_expect(!policy::is_git_metadata(&[46u8, 103, 196, 177, 116]));
+}
+}
 
 #[test]
 fn git_metadata_cannot_be_registered_as_a_host_file_or_external_input() {
@@ -290,17 +331,21 @@ fn retained_input_duplicates_check_each_descriptor_and_refresh_on_each_validatio
             .contains("candidate input changed: data")
     );
 }
+#[cfg(not(verus_keep_ghost))]
 #[path = "git_facts.rs"]
 mod git_facts;
+#[cfg(not(verus_keep_ghost))]
 struct Host {
     dir: TempDir,
     base: String,
     candidate: String,
 }
 // Self-contained registry inputs; tests never query the source checkout's Git.
+#[cfg(not(verus_keep_ghost))]
 fn fixture_registries() -> Value {
     serde_json::from_str(include_str!("fixtures/host-registries.json")).unwrap()
 }
+#[cfg(not(verus_keep_ghost))]
 fn fixture_git() -> PathBuf {
     let search_path = std::env::var_os("PATH").expect("test process PATH");
     let fixture_dir = std::env::split_paths(&search_path)
@@ -319,6 +364,7 @@ fn fixture_git() -> PathBuf {
     );
     selected
 }
+#[cfg(not(verus_keep_ghost))]
 fn git(root: &Path, args: &[&str]) -> String {
     let out = Command::new(fixture_git())
         .arg("-C")
@@ -335,11 +381,13 @@ fn git(root: &Path, args: &[&str]) -> String {
     );
     String::from_utf8(out.stdout).unwrap().trim().into()
 }
+#[cfg(not(verus_keep_ghost))]
 fn write(root: &Path, path: &str, value: &Value) {
     let p = root.join(path);
     fs::create_dir_all(p.parent().unwrap()).unwrap();
     fs::write(p, serde_json::to_vec_pretty(value).unwrap()).unwrap();
 }
+#[cfg(not(verus_keep_ghost))]
 fn commit(root: &Path) -> String {
     git(root, &["add", "."]);
     git(
@@ -357,9 +405,11 @@ fn commit(root: &Path) -> String {
     );
     git(root, &["rev-parse", "HEAD"])
 }
+#[cfg(not(verus_keep_ghost))]
 fn file(path: &str) -> Value {
     json!({"path":path,"owner":"repository","surface":"documentation","cost":"unmeasured","edges":[]})
 }
+#[cfg(not(verus_keep_ghost))]
 fn bind_actual_git(config: &mut Value, _root: &Path) {
     let path = fixture_git();
     let version = Command::new(&path).arg("--version").output().unwrap();
@@ -391,6 +441,7 @@ fn bind_actual_git(config: &mut Value, _root: &Path) {
         .push(json!({"id":"fixture-git-executable", "location":program,
             "presence":"present", "sha256":digest}));
 }
+#[cfg(not(verus_keep_ghost))]
 impl Host {
     fn new() -> Self {
         let dir = tempfile::Builder::new()
@@ -504,6 +555,7 @@ impl Host {
         self.run_context(self.context())
     }
 }
+#[cfg(not(verus_keep_ghost))]
 fn finding(v: &Value, code: &str) -> bool {
     v["findings"]
         .as_array()
@@ -512,6 +564,7 @@ fn finding(v: &Value, code: &str) -> bool {
         .any(|f| f["code"] == code)
 }
 
+#[cfg(not(verus_keep_ghost))]
 fn initial_host() -> Host {
     let mut h = Host::new();
     git(h.root(), &["checkout", "--orphan", "initial-fixture"]);
@@ -550,10 +603,12 @@ fn initial_host() -> Host {
     h
 }
 
+#[cfg(not(verus_keep_ghost))]
 fn initial_run(h: &Host) -> (i32, Value) {
     request_fixture::invoke(h, h.context(), true)
 }
 
+#[cfg(not(verus_keep_ghost))]
 fn amend_initial(h: &mut Host) {
     git(h.root(), &["add", "."]);
     git(
@@ -737,6 +792,7 @@ fn selected_initial_inventory_keeps_entry_identity_and_runs_the_effective_policy
     );
 }
 
+#[cfg(not(verus_keep_ghost))]
 fn paired_host(key: &str) -> Host {
     let mut h = Host::new();
     let (tool, rows) = if key == "scripts" {
@@ -786,6 +842,7 @@ fn paired_host(key: &str) -> Host {
     h.base = h.candidate.clone();
     h
 }
+#[cfg(not(verus_keep_ghost))]
 fn remove_membership(h: &mut Host, path: &str) {
     h.edit(".chrono-harness/FILEMAP.json", |v| {
         v["files"]
@@ -794,6 +851,7 @@ fn remove_membership(h: &mut Host, path: &str) {
             .retain(|f| f["path"] != path);
     });
 }
+#[cfg(not(verus_keep_ghost))]
 fn assert_removed_input_wakes_consumer(key: &str, field: &str, path: &str) {
     let mut h = paired_host(key);
     remove_membership(&mut h, path);
