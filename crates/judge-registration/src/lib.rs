@@ -33,10 +33,8 @@ pub mod ci_transition;
 #[cfg(not(verus_keep_ghost))]
 pub mod route_views;
 pub mod snapshot_queries;
-#[cfg(not(verus_keep_ghost))]
 pub mod test_retirements;
-#[cfg(not(verus_keep_ghost))]
-mod transition;
+pub(crate) mod transition;
 #[allow(unexpected_cfgs)]
 #[cfg(not(verus_keep_ghost))]
 pub mod verified_input_coverage;
@@ -50,7 +48,6 @@ pub mod verified_readiness;
 #[allow(unexpected_cfgs)]
 #[cfg(not(verus_keep_ghost))]
 pub mod verified_scheduling;
-#[cfg(not(verus_keep_ghost))]
 pub mod workflow_views;
 #[cfg(not(verus_keep_ghost))]
 pub mod worktree;

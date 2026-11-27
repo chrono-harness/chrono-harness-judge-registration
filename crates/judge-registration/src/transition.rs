@@ -1,18 +1,66 @@
 //! Finite candidate-owned decoders for explicitly named historical profiles.
+#[cfg(not(verus_keep_ghost))]
+use vstd::prelude::verus;
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
+
+verus! {
+/// An explicit replacement is checked at the candidate; null requires joint retirement.
+pub(crate) fn decide_retirement<'a, T, E, V, J>(
+    request: Option<&'a T>, replacement: V, joint: J,
+) -> (out: Result<Option<&'a T>, E>)
+    where V: FnOnce(&'a T) -> Result<(), E>, J: FnOnce() -> Result<(), E>,
+    requires
+        forall|to: &'a T| request == Some(to) ==> #[trigger] replacement.requires((to,)),
+        request.is_none() ==> joint.requires(()),
+    ensures match request {
+        Some(to) => exists|selected: Result<(), E>| #[trigger] replacement.ensures((to,), selected)
+            && out == match selected { Ok(()) => Ok(Some(to)), Err(error) => Err(error) },
+        None => exists|selected: Result<(), E>| #[trigger] joint.ensures((), selected)
+            && out == match selected { Ok(()) => Ok(None), Err(error) => Err(error) },
+    },
+{
+    let selected = match request {
+        Some(to) => {
+            let result = replacement(to);
+            assert(replacement.ensures((to,), result));
+            result
+        },
+        None => {
+            let result = joint();
+            assert(joint.ensures((), result));
+            result
+        },
+    };
+    match selected { Ok(()) => Ok(request), Err(error) => Err(error) }
+}
+}
+
+#[cfg(not(verus_keep_ghost))]
 use crate::facts;
+#[cfg(not(verus_keep_ghost))]
 use crate::runner_session;
+#[cfg(not(verus_keep_ghost))]
 use crate::wire::json;
+#[cfg(not(verus_keep_ghost))]
 use crate::wire::sha256;
+#[cfg(not(verus_keep_ghost))]
 use crate::wire::{self, Request};
+#[cfg(not(verus_keep_ghost))]
 use crate::{Registrations, execution, historical_git::InstalledGit};
+#[cfg(not(verus_keep_ghost))]
 use serde::{Deserialize, Serialize};
+#[cfg(not(verus_keep_ghost))]
 use serde_json::{Value, json as value};
+#[cfg(not(verus_keep_ghost))]
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     path::Path,
 };
+#[cfg(not(verus_keep_ghost))]
 type Values = BTreeMap<String, Value>;
+#[cfg(not(verus_keep_ghost))]
 /// Fields registration checks against the fixed migration declaration. The runner
 /// retains ownership of the rest of the record, including original launch evidence.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,6 +80,7 @@ pub struct Process {
     #[serde(flatten)]
     original: BTreeMap<String, Value>,
 }
+#[cfg(not(verus_keep_ghost))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tool {
     program: String,
@@ -41,14 +90,17 @@ pub struct Tool {
     version: Process,
 }
 
+#[cfg(not(verus_keep_ghost))]
 enum Conversion<'a> {
     Original(&'a Value),
     Acquire(&'a dyn Fn(&Registrations, &Value) -> Result<Option<Value>, String>),
 }
+#[cfg(not(verus_keep_ghost))]
 fn config_binding(base: &Values, candidate: &Values, entry: &str) -> Result<Value, String> {
     Ok(value!({"base":facts::registry_identity(base, entry)?,
         "candidate":facts::registry_identity(candidate, entry)?}))
 }
+#[cfg(not(verus_keep_ghost))]
 pub(crate) fn load_view(
     view: &Value,
     config: &str,
@@ -93,9 +145,11 @@ pub(crate) fn load_view(
     }
     Ok((old, Registrations::load(&b, config)?))
 }
+#[cfg(not(verus_keep_ghost))]
 pub fn views(req: &Request) -> Result<(Registrations, Registrations, Value), String> {
     InstalledGit::with_request(req, |reader| installed_views(req, reader, None)).0
 }
+#[cfg(not(verus_keep_ghost))]
 fn view_binding(
     req: &Request,
     base: &facts::RegistrySnapshot,
@@ -109,6 +163,7 @@ fn view_binding(
     }
     binding
 }
+#[cfg(not(verus_keep_ghost))]
 /// Rebuild the original registration view from current immutable endpoint
 /// data and retained conversion observations. This never invokes the decoder.
 pub(crate) fn validate_retained_snapshots(
@@ -148,6 +203,7 @@ pub(crate) fn validate_retained_snapshots(
     }
     Ok(())
 }
+#[cfg(not(verus_keep_ghost))]
 pub(crate) fn installed_views(
     request: &Request,
     reader: &InstalledGit<'_>,
@@ -162,11 +218,13 @@ pub(crate) fn installed_views(
         true,
     )
 }
+#[cfg(not(verus_keep_ghost))]
 /// Resolve the same sealed request as an in-process registration consumer.
 pub fn filemap_views(req: &Request) -> Value {
     endpoint_reply(req, |endpoint| endpoint.filemap_view())
 }
 
+#[cfg(not(verus_keep_ghost))]
 /// Interpreted endpoint inputs for the mixed judge's native protocol.
 pub fn classification_views(req: &Request) -> Value {
     if let Err(error) = req.validate() {
@@ -180,6 +238,7 @@ pub fn classification_views(req: &Request) -> Value {
     endpoint_reply(req, |endpoint| endpoint.classification_view(&changed))
 }
 
+#[cfg(not(verus_keep_ghost))]
 fn endpoint_reply(req: &Request, project: impl Fn(&Registrations) -> Value) -> Value {
     let (result, observation) = InstalledGit::with_request(req, |reader| {
         let (old, current, _) = installed_views(req, reader, None)?;
@@ -195,6 +254,7 @@ fn endpoint_reply(req: &Request, project: impl Fn(&Registrations) -> Value) -> V
     reply
 }
 
+#[cfg(not(verus_keep_ghost))]
 pub(crate) fn views_from_snapshots<'a>(
     req: &Request,
     base_snapshot: facts::RegistrySnapshot,
@@ -286,6 +346,7 @@ pub(crate) fn views_from_snapshots<'a>(
     view["binding"] = binding;
     Ok((a, b, view))
 }
+#[cfg(not(verus_keep_ghost))]
 pub fn interpret(
     root: &Path,
     base: &str,
@@ -310,6 +371,7 @@ pub fn interpret(
     let closed = reader.finish();
     result.and_then(|value| closed.map(|_| value))
 }
+#[cfg(not(verus_keep_ghost))]
 fn retained_conversion(
     req: &Request,
     r: &Registrations,
@@ -325,6 +387,7 @@ fn retained_conversion(
     )
 }
 
+#[cfg(not(verus_keep_ghost))]
 fn read_retained_conversion(
     req: &Request,
     r: &Registrations,
@@ -445,6 +508,7 @@ fn read_retained_conversion(
     }
     Ok(Some(retained.unwrap_or(Value::Null)))
 }
+#[cfg(not(verus_keep_ghost))]
 pub(crate) fn interpret_ci_documents<'a>(
     reader: impl Fn() -> Result<&'a InstalledGit<'a>, String>,
     root: &Path,
@@ -470,6 +534,7 @@ pub(crate) fn interpret_ci_documents<'a>(
     )
 }
 
+#[cfg(not(verus_keep_ghost))]
 fn interpret_mode<'a>(
     get_reader: impl Fn() -> Result<&'a InstalledGit<'a>, String>,
     root: &Path,
@@ -844,6 +909,7 @@ fn interpret_mode<'a>(
     }
     Ok((old, new, view))
 }
+#[cfg(not(verus_keep_ghost))]
 pub fn reused_tools(view: &Value) -> Result<BTreeMap<String, Tool>, String> {
     let mut out = BTreeMap::new();
     let c = &view["conversion"];
@@ -855,6 +921,7 @@ pub fn reused_tools(view: &Value) -> Result<BTreeMap<String, Tool>, String> {
     }
     Ok(out)
 }
+#[cfg(not(verus_keep_ghost))]
 pub fn replacements(r: &Registrations) -> Result<BTreeMap<String, String>, String> {
     let mut out = BTreeMap::new();
     for row in r.workflow()["retirements"].as_array().unwrap() {
@@ -875,6 +942,7 @@ pub fn replacements(r: &Registrations) -> Result<BTreeMap<String, String>, Strin
     }
     Ok(out)
 }
+#[cfg(not(verus_keep_ghost))]
 pub fn ambiguity_repaired(r: &Registrations, node: &str, definitions: &[String]) -> bool {
     let repairs: Vec<_> = r.workflow()["historical_profiles"]
         .as_array()
@@ -905,6 +973,7 @@ pub fn ambiguity_repaired(r: &Registrations, node: &str, definitions: &[String])
                 .is_some_and(|m| m.get(node).is_some_and(|v| v == to)))
 }
 
+#[cfg(not(verus_keep_ghost))]
 /// Explicit requests only: null is a requested retirement, never its approval.
 pub fn retirement_requests(r: &Registrations) -> Result<BTreeMap<String, Option<String>>, String> {
     let mut out = BTreeMap::new();
@@ -926,6 +995,7 @@ pub fn retirement_requests(r: &Registrations) -> Result<BTreeMap<String, Option<
     }
     Ok(out)
 }
+#[cfg(not(verus_keep_ghost))]
 pub fn retirement_declaration<'a>(
     r: &'a Registrations,
     kind: &str,
@@ -943,6 +1013,7 @@ pub fn retirement_declaration<'a>(
     Ok(rows[0])
 }
 
+#[cfg(not(verus_keep_ghost))]
 /// Validate the registration structure of a removed test, never its execution.
 /// Callers must retain its old costs and require a replacement's actual success.
 pub fn validate_test_retirement(
@@ -960,59 +1031,69 @@ pub fn validate_test_retirement(
     let request = requests
         .get(node)
         .ok_or_else(|| format!("E_REQUIRED_TEST_REMOVED: {node}"))?;
-    if let Some(to) = request {
-        if !new.get(to).is_some_and(|n| n.unique().is_some()) {
-            return Err(format!(
-                "E_REQUIRED_TEST_REMOVED: replacement missing/ambiguous: {node} -> {to}"
-            ));
-        }
-    } else {
-        for definition in &defs.definitions {
-            let d = &definition.value;
-            // Group aliases are opaque; the retained definition identifies the owner.
-            let (collection, kind, pair, defining_id) =
-                if let Some(id) = definition.identity.strip_prefix("project:") {
-                    ("projects", "project", "test_project", id)
-                } else if let Some(id) = definition.identity.strip_prefix("script:") {
-                    ("scripts", "script", "test_script", id)
-                } else {
-                    return Err(format!(
-                        "E_RETIREMENT: retired test has invalid defining owner: {node}"
-                    ));
-                };
-            let owner = d["tests_for"]
-                .as_str()
-                .ok_or("E_RETIREMENT: retired test has no producer")?;
-            if d["id"].as_str() != Some(defining_id) {
-                return Err(format!(
-                    "E_RETIREMENT: defining owner identity/value mismatch: {node}"
-                ));
+    decide_retirement(
+        request.as_ref(),
+        |to| {
+            if new.get(to).is_some_and(|n| n.unique().is_some()) {
+                Ok(())
+            } else {
+                Err(format!(
+                    "E_REQUIRED_TEST_REMOVED: replacement missing/ambiguous: {node} -> {to}"
+                ))
             }
-            let originals: Vec<_> = a.projects()[collection]
-                .as_array()
-                .unwrap()
-                .iter()
-                .filter(|p| p["id"] == owner && p[pair] == defining_id)
-                .collect();
-            if originals.len() != 1
-                || b.projects()[collection]
+        },
+        || {
+            for definition in &defs.definitions {
+                let d = &definition.value;
+                // Group aliases are opaque; the retained definition identifies the owner.
+                let (collection, kind, pair, defining_id) =
+                    if let Some(id) = definition.identity.strip_prefix("project:") {
+                        ("projects", "project", "test_project", id)
+                    } else if let Some(id) = definition.identity.strip_prefix("script:") {
+                        ("scripts", "script", "test_script", id)
+                    } else {
+                        return Err(format!(
+                            "E_RETIREMENT: retired test has invalid defining owner: {node}"
+                        ));
+                    };
+                let owner = d["tests_for"]
+                    .as_str()
+                    .ok_or("E_RETIREMENT: retired test has no producer")?;
+                if d["id"].as_str() != Some(defining_id) {
+                    return Err(format!(
+                        "E_RETIREMENT: defining owner identity/value mismatch: {node}"
+                    ));
+                }
+                let originals: Vec<_> = a.projects()[collection]
                     .as_array()
                     .unwrap()
                     .iter()
-                    .any(|p| p["id"] == owner || p["id"] == defining_id)
-                || !retirement_declaration(b, kind, owner).map_err(|_| {
-                    format!("E_REQUIRED_TEST_REMOVED: missing/ambiguous {kind}:{owner} for {node}")
-                })?["replacement"]
-                    .is_null()
-            {
-                return Err(format!(
-                    "E_REQUIRED_TEST_REMOVED: joint producer/test removal required: {node}"
-                ));
+                    .filter(|p| p["id"] == owner && p[pair] == defining_id)
+                    .collect();
+                if originals.len() != 1
+                    || b.projects()[collection]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|p| p["id"] == owner || p["id"] == defining_id)
+                    || !retirement_declaration(b, kind, owner).map_err(|_| {
+                        format!(
+                            "E_REQUIRED_TEST_REMOVED: missing/ambiguous {kind}:{owner} for {node}"
+                        )
+                    })?["replacement"]
+                        .is_null()
+                {
+                    return Err(format!(
+                        "E_REQUIRED_TEST_REMOVED: joint producer/test removal required: {node}"
+                    ));
+                }
             }
-        }
-    }
-    Ok(request.clone())
+            Ok(())
+        },
+    )
+    .map(|decision| decision.cloned())
 }
+#[cfg(not(verus_keep_ghost))]
 /// A declared later validator must consume this judge before a pending obligation
 /// can leave planning/execution. The validator, not this graph query, approves it.
 pub fn downstream_validator(r: &Registrations, id: &str) -> bool {
