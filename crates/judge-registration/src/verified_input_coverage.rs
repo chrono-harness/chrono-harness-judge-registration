@@ -1,6 +1,6 @@
 //! Input-coverage row state is a proved policy; JSON remains an external adapter.
 #![allow(unexpected_cfgs)]
-use vstd::{contrib::exec_spec::ExecSpecEq, prelude::*};
+use vstd::prelude::*;
 
 verus! {
 
@@ -26,12 +26,12 @@ pub fn row_state_valid(
         closure_status@ == "declared-complete"@,
     ),
 {
-    let declared_complete = <&str>::exec_eq(closure_status, "declared-complete");
-    if <&str>::exec_eq(state, "bound") || <&str>::exec_eq(state, "absent") {
+    let declared_complete = closure_status == "declared-complete";
+    if state == "bound" || state == "absent" {
         binding_count > 0
-    } else if <&str>::exec_eq(state, "not-applicable") || <&str>::exec_eq(state, "unresolved") {
+    } else if state == "not-applicable" || state == "unresolved" {
         binding_count == 0
-            && !(<&str>::exec_eq(state, "unresolved") && declared_complete)
+            && !(state == "unresolved" && declared_complete)
     } else {
         false
     }
@@ -45,7 +45,7 @@ pub open spec fn absent_state(state: Seq<char>) -> bool {
 pub fn is_absent(state: &str) -> (absent: bool)
     ensures absent == absent_state(state@),
 {
-    <&str>::exec_eq(state, "absent")
+    state == "absent"
 }
 
 }

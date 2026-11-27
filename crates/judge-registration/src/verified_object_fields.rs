@@ -1,7 +1,7 @@
 //! Admission of an observed object against its registered required and optional fields.
 #[cfg(verus_keep_ghost)]
 use vstd::assert_seqs_equal;
-use vstd::{contrib::exec_spec::ExecSpecEq, prelude::*};
+use vstd::prelude::*;
 
 verus! {
 
@@ -50,7 +50,7 @@ fn field_list_contains(fields: &[&str], name: &str) -> (found: bool)
             forall|j: int| 0 <= j < i ==> fields[j]@ != name@,
         decreases fields.len() - i,
     {
-        if <&str>::exec_eq(fields[i], name) {
+        if fields[i] == name {
             return true;
         }
         i += 1;

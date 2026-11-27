@@ -1,9 +1,9 @@
 //! Validate retained absent, inline-byte, and file-backed input representations.
 use super::{header::Retained, schema};
 use schema::{ObjectFieldError, object_error_parts, validate_object_fields};
+use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 use vstd::string::StringSliceAdditionalSpecFns;
-use vstd::{contrib::exec_spec::ExecSpecEq, prelude::*};
 
 verus! {
 
@@ -29,7 +29,7 @@ fn valid_blob_path(bytes: &[u8]) -> (valid: bool)
     if bytes.len() <= prefix.len() { return false; }
     let (head, _) = bytes.split_at(prefix.len());
     proof { assert(head.deep_view() =~= head@); assert(prefix.deep_view() =~= prefix@); }
-    if !<&[u8]>::exec_eq(head, prefix) { return false; }
+    if !(head == prefix) { return false; }
     let mut i = prefix.len();
     proof { reveal_strlit(".chrono-harness/state/"); }
     while i < bytes.len()

@@ -6,10 +6,10 @@ publish = false
 autotests = false
 
 [dependencies]
-vstd = "=0.0.0-2026-04-20-1748"
+vstd = "=0.0.0-2026-11-22-0344"
 chrono-registration-fixture = { path = "../registration-fixture" }
 chrono-judge-registration = { path = "../judge-registration" }
-verus_builtin_macros = "=0.0.0-2026-04-20-1748"
+verus_builtin_macros = "=0.0.0-2026-11-22-0344"
 sha1 = "0.10"
 sha2 = "0.10"
 serde = { version = "1", features = ["derive"] }

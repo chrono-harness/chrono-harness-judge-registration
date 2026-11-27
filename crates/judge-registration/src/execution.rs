@@ -1,8 +1,23 @@
 //! Immutable execution declarations. This module neither selects nor launches work.
+#[cfg(not(verus_keep_ghost))]
+use crate::verified_scheduling;
+#[cfg(verus_keep_ghost)]
+#[path = "verified_scheduling.rs"]
+pub mod verified_scheduling;
+use vstd::hash_set::StringHashSet;
+#[cfg(not(verus_keep_ghost))]
+use vstd::prelude::verus;
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
+
+#[cfg(not(verus_keep_ghost))]
 use serde::{Deserialize, Serialize};
+#[cfg(not(verus_keep_ghost))]
 use serde_json::Value;
+#[cfg(not(verus_keep_ghost))]
 use std::collections::{BTreeMap, BTreeSet};
 
+#[cfg(not(verus_keep_ghost))]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Plan {
@@ -13,18 +28,19 @@ pub struct Plan {
     pub operation_bounds: BTreeMap<String, Bounds>,
 }
 
-pub use crate::verified_scheduling::Bounds;
+pub use self::verified_scheduling::Bounds;
 
+#[cfg(not(verus_keep_ghost))]
 impl Plan {
     pub fn validate(&self) -> Result<(), String> {
         let global = Bounds {
             timeout_seconds: self.timeout_seconds,
             output_limit_bytes: self.output_limit_bytes,
         };
-        if !crate::verified_scheduling::valid_plan(
+        if !verified_scheduling::valid_plan(
             &self.operations,
             global,
-            &self.operation_bounds,
+            &self.operation_bounds.iter().collect::<Vec<_>>(),
             crate::PROJECTS_INPUT_LIMIT,
         ) {
             return Err("E_EXECUTION_PLAN: invalid operations or bounds".into());
@@ -33,12 +49,14 @@ impl Plan {
     }
 }
 
+#[cfg(not(verus_keep_ghost))]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Claims {
     pub resources: Vec<String>,
     pub outputs: Vec<String>,
 }
+#[cfg(not(verus_keep_ghost))]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Scheduling {
@@ -48,6 +66,7 @@ pub struct Scheduling {
     pub resources: Vec<String>,
     pub claims: BTreeMap<String, Claims>,
 }
+#[cfg(not(verus_keep_ghost))]
 impl Scheduling {
     pub fn validate(&self) -> Result<(), String> {
         let unique = |items: &[String]| {
@@ -97,7 +116,55 @@ impl Scheduling {
             })
     }
 }
+verus! {
+
+pub open spec fn claim_named(claims: Seq<&String>, name: Seq<char>) -> bool {
+    exists|j: int| 0 <= j < claims.len() && #[trigger] claims[j]@ == name
+}
+
+/// Build the lookup from every declared name. Operations from different plans may repeat.
+pub fn claims_cover_operations(operations: &[&String], claims: &[&String]) -> (covered: bool)
+    ensures covered == (forall|i: int| 0 <= i < operations.len() ==>
+        claim_named(claims@, #[trigger] operations@[i]@)),
+{
+    let mut registered = StringHashSet::new();
+    let mut index = 0;
+    while index < claims.len()
+        invariant
+            registered.well_formed(), 0 <= index <= claims.len(),
+            forall|name: Seq<char>| #[trigger] registered@.contains(name)
+                <==> exists|j: int| 0 <= j < index && #[trigger] claims@[j]@ == name,
+        decreases claims.len() - index,
+    {
+        registered.insert(claims[index].clone());
+        index += 1;
+    }
+    let mut pos = 0;
+    while pos < operations.len()
+        invariant
+            registered.well_formed(), 0 <= pos <= operations.len(),
+            forall|name: Seq<char>| #[trigger] registered@.contains(name)
+                <==> exists|j: int| 0 <= j < claims.len() && #[trigger] claims@[j]@ == name,
+            forall|i: int| 0 <= i < pos ==> #[trigger] registered@.contains(operations@[i]@),
+        decreases operations.len() - pos,
+    {
+        if !registered.contains(operations[pos].as_str()) {
+            assert(!exists|j: int| 0 <= j < claims.len() && #[trigger] claims@[j]@ == operations@[pos as int]@);
+            return false;
+        }
+        pos += 1;
+    }
+    assert forall|i: int| 0 <= i < operations.len() implies
+        claim_named(claims@, #[trigger] operations@[i]@) by {
+        assert(registered@.contains(operations@[i]@));
+    }
+    true
+}
+
+}
+
 /// Interpret the complete host policy before tool observation or operation effects.
+#[cfg(not(verus_keep_ghost))]
 pub fn scheduling(
     filemap: &Value,
     projects: &Value,
@@ -109,11 +176,10 @@ pub fn scheduling(
     let policy: Scheduling =
         serde_json::from_value(value.clone()).map_err(|e| format!("E_SCHEDULING: {e}"))?;
     policy.validate()?;
-    let participating: BTreeSet<_> = plans(filemap)?
-        .values()
-        .flat_map(|p| p.operations.iter().cloned())
-        .collect();
-    if !crate::verified_scheduling::claims_cover_operations(&participating, &policy.claims) {
+    let plans = plans(filemap)?;
+    let participating: Vec<_> = plans.values().flat_map(|plan| &plan.operations).collect();
+    let claims: Vec<_> = policy.claims.keys().collect();
+    if !claims_cover_operations(&participating, &claims) {
         return Err(
             "E_SCHEDULING: claims must name every participating operation, including empty claims"
                 .into(),
@@ -146,6 +212,7 @@ pub fn scheduling(
     }
     Ok(Some(policy))
 }
+#[cfg(not(verus_keep_ghost))]
 pub fn plans(filemap: &Value) -> Result<BTreeMap<String, Plan>, String> {
     let plans: BTreeMap<String, Plan> = serde_json::from_value(filemap["execution_plans"].clone())
         .map_err(|e| format!("E_EXECUTION_PLAN: {e}"))?;
@@ -157,6 +224,7 @@ pub fn plans(filemap: &Value) -> Result<BTreeMap<String, Plan>, String> {
     }
     Ok(plans)
 }
+#[cfg(not(verus_keep_ghost))]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Method {
@@ -168,6 +236,7 @@ pub struct Method {
     pub output_contract: Option<Value>,
 }
 /// A test identity is opaque; its owner and terminal action are explicit registration.
+#[cfg(not(verus_keep_ghost))]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct TestBinding {
     pub owner: String,
@@ -176,6 +245,7 @@ pub struct TestBinding {
 }
 
 /// Shared by full and scoped consumers. Legacy scripts retain their single execute alias.
+#[cfg(not(verus_keep_ghost))]
 pub fn test_bindings(projects: &Value) -> Result<BTreeMap<String, Vec<TestBinding>>, String> {
     let mut out: BTreeMap<String, Vec<TestBinding>> = BTreeMap::new();
     let mut explicit = BTreeSet::new();
@@ -259,6 +329,7 @@ pub fn test_bindings(projects: &Value) -> Result<BTreeMap<String, Vec<TestBindin
     Ok(out)
 }
 /// Retain duplicates for the routes policy to reject; never overwrite a method.
+#[cfg(not(verus_keep_ghost))]
 pub fn methods(projects: &Value) -> Result<BTreeMap<String, Vec<Method>>, String> {
     let mut out: BTreeMap<String, Vec<Method>> = BTreeMap::new();
     for (key, prefix) in [("projects", "project"), ("scripts", "script")] {
@@ -289,6 +360,7 @@ pub fn methods(projects: &Value) -> Result<BTreeMap<String, Vec<Method>>, String
     Ok(out)
 }
 
+#[cfg(not(verus_keep_ghost))]
 fn scoped_bindings(projects: &Value) -> Result<BTreeMap<String, Vec<TestBinding>>, String> {
     if projects["schema_version"] == 2 {
         crate::schema::project_bindings(projects)
@@ -299,14 +371,17 @@ fn scoped_bindings(projects: &Value) -> Result<BTreeMap<String, Vec<TestBinding>
 
 /// Check the execution declarations from one scoped endpoint before returning its bindings.
 /// The caller already owns the original plans, scheduling policy and reference declarations.
+#[cfg(not(verus_keep_ghost))]
 pub fn scoped_execution(input: impl std::io::Read) -> Result<Value, String> {
     scoped_endpoint(input, false)
 }
 
+#[cfg(not(verus_keep_ghost))]
 pub fn scoped_startup(input: impl std::io::Read) -> Result<Value, String> {
     scoped_endpoint(input, true)
 }
 
+#[cfg(not(verus_keep_ghost))]
 fn scoped_endpoint(input: impl std::io::Read, startup: bool) -> Result<Value, String> {
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
@@ -384,6 +459,7 @@ fn scoped_endpoint(input: impl std::io::Read, startup: bool) -> Result<Value, St
 }
 
 /// Read-only views of execution registrations consumed by release recipes and previews.
+#[cfg(not(verus_keep_ghost))]
 pub enum ExecutionView {
     Methods,
     TestOwners,
@@ -391,6 +467,7 @@ pub enum ExecutionView {
     ScopedTestBindings,
 }
 
+#[cfg(not(verus_keep_ghost))]
 impl ExecutionView {
     pub fn write(&self, input: &[u8], mut output: impl std::io::Write) -> Result<(), String> {
         let projects = crate::wire::json(input)?;
@@ -419,6 +496,7 @@ impl ExecutionView {
 }
 
 /// Interpret the declarations a route planner consumes before constructing its operation graph.
+#[cfg(not(verus_keep_ghost))]
 pub fn plan_declarations(input: impl std::io::Read) -> Result<Value, String> {
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
@@ -433,6 +511,7 @@ pub fn plan_declarations(input: impl std::io::Read) -> Result<Value, String> {
 }
 
 /// Select tests whose admitted scheduling declarations differ across fixed endpoints.
+#[cfg(not(verus_keep_ghost))]
 pub fn scheduling_tests(input: impl std::io::Read) -> Result<BTreeSet<String>, String> {
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]

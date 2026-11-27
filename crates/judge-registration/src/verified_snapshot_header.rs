@@ -1,5 +1,5 @@
 //! Snapshot version, selector binding and absence checks used when admitting retained inputs.
-use vstd::{contrib::exec_spec::ExecSpecEq, prelude::*};
+use vstd::prelude::*;
 
 verus! {
 
@@ -24,9 +24,9 @@ fn classify_snapshot_schema(schema: Option<&str>) -> (version: u8)
 {
     match schema {
         Some(value) => {
-            if <&str>::exec_eq(value, SNAPSHOT_SCHEMA) { 1 }
-            else if <&str>::exec_eq(value, SNAPSHOT_SCHEMA_V2) { 2 }
-            else if <&str>::exec_eq(value, SNAPSHOT_SCHEMA_V3) { 3 }
+            if value == SNAPSHOT_SCHEMA { 1 }
+            else if value == SNAPSHOT_SCHEMA_V2 { 2 }
+            else if value == SNAPSHOT_SCHEMA_V3 { 3 }
             else { 0 }
         },
         None => 0,
@@ -41,7 +41,7 @@ pub fn snapshot_uses_selector(schema: Option<&str>) -> (selected: bool)
     },
 {
     match schema {
-        Some(text) => <&str>::exec_eq(text, SNAPSHOT_SCHEMA_V3),
+        Some(text) => text == SNAPSHOT_SCHEMA_V3,
         None => false,
     }
 }
@@ -92,11 +92,11 @@ pub fn admit_snapshot_selector_binding(
     },
 {
     let schema_ok = match schema {
-        Some(text) => <&str>::exec_eq(text, "chrono-registry-selection/v1"),
+        Some(text) => text == "chrono-registry-selection/v1",
         None => false,
     };
     let platform_ok = match platform {
-        Some((text, trimmed)) => !text.is_empty() && <&str>::exec_eq(text, trimmed),
+        Some((text, trimmed)) => !text.is_empty() && text == trimmed,
         None => false,
     };
     if schema_ok && platform_ok && entry_matches && selected_matches && !self_link {
@@ -141,7 +141,7 @@ pub fn admit_endpoint_snapshot_version(
         Some(2) | Some(3) | Some(4) => {
             let expected = select_snapshot_schema(config_version, selected);
             if let Some(value) = schema {
-                if <&str>::exec_eq(value, expected) { return Ok(()); }
+                if value == expected { return Ok(()); }
             }
             if selected { Err("selected config requires snapshot v3") }
             else { Err("config v2 requires snapshot v2") }

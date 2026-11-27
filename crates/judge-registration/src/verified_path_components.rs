@@ -1,6 +1,6 @@
 //! Protect Git metadata and classify observed paths against literal artifact prefixes.
 #![allow(unexpected_cfgs)]
-use vstd::{contrib::exec_spec::ExecSpecEq, prelude::*};
+use vstd::prelude::*;
 
 verus! {
 
@@ -30,7 +30,7 @@ pub fn has_byte_prefix(path: &[u8], prefix: &[u8]) -> (matches: bool)
     if path.len() < prefix.len() { return false; }
     let (head, _) = path.split_at(prefix.len());
     proof { assert(head.deep_view() =~= head@); assert(prefix.deep_view() =~= prefix@); }
-    <&[u8]>::exec_eq(head, prefix)
+    head == prefix
 }
 
 pub open spec fn matches_directory(path: String, directory: String) -> bool {

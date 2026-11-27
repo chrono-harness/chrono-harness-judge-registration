@@ -5,9 +5,9 @@ use chrono_judge_registration::inputs as policy;
 #[cfg(verus_keep_ghost)]
 #[path = "../../judge-registration/src/verified_snapshot_header.rs"]
 mod policy;
+use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 use vstd::vpanic as panic;
-use vstd::{contrib::exec_spec::ExecSpecEq, prelude::*};
 
 verus! {
 
@@ -172,7 +172,7 @@ fn expect_snapshot_error(result: Result<(), &str>, expected: &str)
 {
     match result {
         Err(message) => {
-            let exact = <&str>::exec_eq(message, expected);
+            let exact = message == expected;
             expect(exact);
         },
         _ => { expect(false); },
@@ -317,9 +317,9 @@ fn direct_snapshot_versions_two_three_and_four_select_v2() {
     let two = policy::select_snapshot_schema(Some(2), false);
     let three = policy::select_snapshot_schema(Some(3), false);
     let four = policy::select_snapshot_schema(Some(4), false);
-    let two_ok = <&str>::exec_eq(two, "chrono-input-snapshot/v2");
-    let three_ok = <&str>::exec_eq(three, "chrono-input-snapshot/v2");
-    let four_ok = <&str>::exec_eq(four, "chrono-input-snapshot/v2");
+    let two_ok = two == "chrono-input-snapshot/v2";
+    let three_ok = three == "chrono-input-snapshot/v2";
+    let four_ok = four == "chrono-input-snapshot/v2";
     expect(two_ok && three_ok && four_ok);
 }
 
@@ -327,14 +327,14 @@ fn direct_unknown_snapshot_version_selects_v1(version: u64)
     requires version != 2, version != 3, version != 4,
 {
     let actual = policy::select_snapshot_schema(Some(version), false);
-    let exact = <&str>::exec_eq(actual, "chrono-input-snapshot/v1");
+    let exact = actual == "chrono-input-snapshot/v1";
     expect(exact);
 }
 
 #[cfg_attr(not(verus_keep_ghost), test)]
 fn direct_snapshot_missing_zero_one_five_and_maximum_select_v1() {
     let missing = policy::select_snapshot_schema(None, false);
-    let missing_ok = <&str>::exec_eq(missing, "chrono-input-snapshot/v1");
+    let missing_ok = missing == "chrono-input-snapshot/v1";
     expect(missing_ok);
     direct_unknown_snapshot_version_selects_v1(0);
     direct_unknown_snapshot_version_selects_v1(1);
@@ -344,7 +344,7 @@ fn direct_snapshot_missing_zero_one_five_and_maximum_select_v1() {
 
 fn selected_snapshot_ignores_any_direct_version(version: Option<u64>) {
     let actual = policy::select_snapshot_schema(version, true);
-    let exact = <&str>::exec_eq(actual, "chrono-input-snapshot/v3");
+    let exact = actual == "chrono-input-snapshot/v3";
     expect(exact);
 }
 
