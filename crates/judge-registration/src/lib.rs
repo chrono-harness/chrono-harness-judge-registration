@@ -16,7 +16,6 @@ pub mod execution;
 pub mod facts;
 #[cfg(not(verus_keep_ghost))]
 mod historical_git;
-#[cfg(not(verus_keep_ghost))]
 pub mod impact_views;
 #[cfg(not(verus_keep_ghost))]
 mod input_coverage;
