@@ -16,6 +16,60 @@ mod registration_contract;
 
 verus! {
 #[cfg(verus_keep_ghost)]
+fn replacement_and_joint_removal_use_the_matching_validator_and_return_original_failures() {
+    use registration::transition::decide_retirement;
+    let valid = |_to: &u8| -> (r: Result<(), u8>) ensures r == Ok::<(), u8>(()), { Ok(()) };
+    let missing = |_to: &u8| -> (r: Result<(), u8>) ensures r == Err::<(), u8>(8), { Err(8) };
+    let never_replace = |_to: &u8| -> (r: Result<(), u8>) requires false, { Ok(()) };
+    let joint = || -> (r: Result<(), u8>) ensures r == Ok::<(), u8>(()), { Ok(()) };
+    let unpaired = || -> (r: Result<(), u8>) ensures r == Err::<(), u8>(13), { Err(13) };
+    let never_joint = || -> (r: Result<(), u8>) requires false, { Ok(()) };
+    let to = 37u8;
+    let accepted = decide_retirement(Some(&to), valid, never_joint);
+    assert(accepted == Ok::<_, u8>(Some(&to)));
+    let rejected = decide_retirement(Some(&to), missing, never_joint);
+    assert(rejected == Err::<Option<&u8>, _>(8u8));
+    let accepted = decide_retirement(None, never_replace, joint);
+    assert(accepted == Ok::<_, u8>(None::<&u8>));
+    let rejected = decide_retirement(None, never_replace, unpaired);
+    assert(rejected == Err::<Option<&u8>, _>(13u8));
+}
+
+#[cfg(verus_keep_ghost)]
+fn workflow_reports_only_missing_baseline_tests() {
+    use registration::workflow_views::{test_change, TestChange};
+    broadcast use vstd::array::group_array_axioms;
+    let baseline_test = [b't', b'e', b's', b't', b':', b'a'];
+    let ordinary_node = [b't', b'e', b's', b't', b's', b':', b'a'];
+    assert(baseline_test@.take(5) =~= seq![b't', b'e', b's', b't', b':']);
+    assert(ordinary_node@[4] != b':');
+    let present = || -> (found: bool) ensures found, { true };
+    let missing = || -> (found: bool) ensures !found, { false };
+    let ordinary = test_change(&ordinary_node, missing);
+    assert(ordinary == TestChange::Other);
+    let retained = test_change(&baseline_test, present);
+    assert(retained == TestChange::Present);
+    let removed = test_change(&baseline_test, missing);
+    assert(removed == TestChange::Removed);
+}
+
+#[cfg(verus_keep_ghost)]
+fn collection_queries_require_both_the_checkout_and_the_collection_scope() {
+    use registration::test_retirements::read_collection;
+    let no_read = || -> (r: Result<u8, String>) requires false, { Ok(0) };
+    let wrong_checkout = read_collection(false, true, no_read);
+    let wrong_scope = read_collection(true, false, no_read);
+    assert(wrong_checkout matches Err(e) && e@ == "route collection requires this checkout and a collection scope"@);
+    assert(wrong_scope matches Err(e) && e@ == "route collection requires this checkout and a collection scope"@);
+    let underlying = || -> (r: Result<u8, String>) ensures r matches Err(e) && e@ == "original"@, { Err("original".to_string()) };
+    let failed = read_collection(true, true, underlying);
+    assert(failed matches Err(e) && e@ == "original"@);
+    let success = || -> (r: Result<u8, String>) ensures r == Ok::<u8, String>(41), { Ok(41) };
+    let resolved = read_collection(true, true, success);
+    assert(resolved == Ok::<u8, String>(41));
+}
+
+#[cfg(verus_keep_ghost)]
 fn read_completion_retains_the_original_action_and_only_publishes_a_completed_observation() {
     use registration::historical_git::complete_read;
     let publish = |receipt: u8| -> (out: Option<u8>) ensures out == Some(receipt), { Some(receipt) };

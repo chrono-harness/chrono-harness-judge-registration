@@ -1191,7 +1191,20 @@
           "kind": "test-execution",
           "to": "test:judge-registration-tests"
         }
-      ]
+      ],
+      "verification": {
+        "role": "program",
+        "roots": [
+          {
+            "path": "crates/judge-registration/src/lib.rs",
+            "operation": "verify.registration-path-components"
+          },
+          {
+            "path": "crates/judge-registration-tests/tests/verified_path_components.rs",
+            "operation": "verify.registration-path-components-tests"
+          }
+        ]
+      }
     },
     {
       "path": "crates/judge-registration/src/transition.rs",
@@ -1203,7 +1216,20 @@
           "kind": "test-execution",
           "to": "test:judge-registration-tests"
         }
-      ]
+      ],
+      "verification": {
+        "role": "program",
+        "roots": [
+          {
+            "path": "crates/judge-registration/src/lib.rs",
+            "operation": "verify.registration-path-components"
+          },
+          {
+            "path": "crates/judge-registration-tests/tests/verified_path_components.rs",
+            "operation": "verify.registration-path-components-tests"
+          }
+        ]
+      }
     },
     {
       "path": "crates/judge-registration/src/verified_input_coverage.rs",
@@ -1453,7 +1479,20 @@
           "kind": "test-execution",
           "to": "test:judge-registration-tests"
         }
-      ]
+      ],
+      "verification": {
+        "role": "program",
+        "roots": [
+          {
+            "path": "crates/judge-registration/src/lib.rs",
+            "operation": "verify.registration-path-components"
+          },
+          {
+            "path": "crates/judge-registration-tests/tests/verified_path_components.rs",
+            "operation": "verify.registration-path-components-tests"
+          }
+        ]
+      }
     },
     {
       "path": "crates/judge-registration/src/worktree.rs",

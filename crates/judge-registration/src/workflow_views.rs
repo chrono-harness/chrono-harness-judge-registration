@@ -1,9 +1,41 @@
 //! Interpreted registration data used when workflow verifies a sealed request.
+#[cfg(not(verus_keep_ghost))]
+use vstd::prelude::verus;
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
+
+verus! {
+pub(crate) enum TestChange { Other, Present, Removed }
+
+/// Only baseline test nodes can be ambiguous or removed; candidate membership decides removal.
+pub(crate) fn test_change<F>(node: &[u8], present: F) -> (change: TestChange)
+    where F: FnOnce() -> bool,
+    requires present.requires(()),
+    ensures if super::verified_path_components::byte_prefix(node@, seq![b't', b'e', b's', b't', b':']) {
+        exists|found: bool| #[trigger] present.ensures((), found)
+            && change == (if found { TestChange::Present } else { TestChange::Removed })
+    } else { change == TestChange::Other },
+{
+    let prefix = [b't', b'e', b's', b't', b':'];
+    broadcast use vstd::array::group_array_axioms;
+    assert(prefix@ =~= seq![b't', b'e', b's', b't', b':']);
+    if !super::verified_path_components::has_byte_prefix(node, &prefix) { return TestChange::Other; }
+    let found = present();
+    assert(present.ensures((), found));
+    if found { TestChange::Present } else { TestChange::Removed }
+}
+}
+
+#[cfg(not(verus_keep_ghost))]
 use crate::wire::Request;
+#[cfg(not(verus_keep_ghost))]
 use crate::{Registrations, execution, inputs, transition};
+#[cfg(not(verus_keep_ghost))]
 use serde_json::{Value, json};
+#[cfg(not(verus_keep_ghost))]
 use std::collections::BTreeMap;
 
+#[cfg(not(verus_keep_ghost))]
 pub fn query(root: &std::path::Path, input: impl std::io::Read) -> Result<Value, String> {
     #[derive(serde::Deserialize)]
     #[serde(deny_unknown_fields)]
@@ -17,6 +49,7 @@ pub fn query(root: &std::path::Path, input: impl std::io::Read) -> Result<Value,
     crate::impact_views::workflow(root, query.request, query.replay, query.originals)
 }
 
+#[cfg(not(verus_keep_ghost))]
 /// Defer individual declaration errors until workflow reaches the corresponding obligation.
 fn tested_changes(old: &Registrations, current: &Registrations) -> Value {
     let before = old.node_data();
@@ -24,7 +57,8 @@ fn tested_changes(old: &Registrations, current: &Registrations) -> Value {
     let mut ambiguities = BTreeMap::new();
     let mut removed_tests = BTreeMap::new();
     for (node, group) in &before {
-        if !node.starts_with("test:") {
+        let change = test_change(node.as_bytes(), || after.contains_key(node));
+        if matches!(change, TestChange::Other) {
             continue;
         }
         if group.definitions.len() > 1 {
@@ -40,7 +74,7 @@ fn tested_changes(old: &Registrations, current: &Registrations) -> Value {
                 }),
             );
         }
-        if !after.contains_key(node) {
+        if matches!(change, TestChange::Removed) {
             removed_tests.insert(
                 node,
                 transition::validate_test_retirement(old, current, node),
@@ -95,6 +129,7 @@ fn tested_changes(old: &Registrations, current: &Registrations) -> Value {
            "removed_tests":removed_tests,"removed_owners":removed_owners})
 }
 
+#[cfg(not(verus_keep_ghost))]
 pub(crate) fn project(
     req: &Request,
     old: &Registrations,
