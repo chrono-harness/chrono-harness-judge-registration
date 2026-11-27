@@ -34,7 +34,6 @@ pub use registrations::check_documents;
 pub mod ci_transition;
 #[cfg(not(verus_keep_ghost))]
 pub mod route_views;
-#[cfg(not(verus_keep_ghost))]
 pub mod snapshot_queries;
 #[cfg(not(verus_keep_ghost))]
 pub mod test_retirements;

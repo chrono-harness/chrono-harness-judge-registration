@@ -1,36 +1,6 @@
 //! Registration facts used by FILEMAP for a pair of fixed endpoints.
 #![allow(unexpected_cfgs)]
-use vstd::prelude::*;
-
-verus! {
-/// An endpoint's original documents are interpreted under the host's configuration.
-pub trait EndpointDocuments: Sized {
-    type Snapshot;
-    type Error;
-    spec fn projected(&self, config: &str) -> Result<Self::Snapshot, Self::Error>;
-    fn interpret(self, config: &str) -> (result: Result<Self::Snapshot, Self::Error>)
-        ensures result == self.projected(config);
-}
-
-/// Interpret the base before the candidate and preserve the first error.
-pub fn interpret_pair<T: EndpointDocuments>(originals: (T, T), config: &str)
-    -> (result: Result<(T::Snapshot, T::Snapshot), T::Error>)
-    ensures result == match originals.0.projected(config) {
-        Err(error) => Err(error),
-        Ok(base) => match originals.1.projected(config) {
-            Err(error) => Err(error),
-            Ok(candidate) => Ok((base, candidate)),
-        }
-    },
-{
-    let (base, candidate) = originals;
-    let base = match base.interpret(config) { Ok(value) => value, Err(error) => return Err(error) };
-    match candidate.interpret(config) {
-        Ok(value) => Ok((base, value)),
-        Err(error) => Err(error),
-    }
-}
-}
+pub use super::snapshot_queries::{EndpointDocuments, interpret_pair};
 
 #[cfg(not(verus_keep_ghost))]
 use crate::facts;
