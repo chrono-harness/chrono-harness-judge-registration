@@ -22,6 +22,7 @@ use std::collections::{BTreeMap, BTreeSet};
 #[serde(deny_unknown_fields)]
 pub struct Plan {
     pub operations: Vec<String>,
+    #[serde(deserialize_with = "crate::execution::declared_timeout")]
     pub timeout_seconds: u64,
     pub output_limit_bytes: usize,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -29,6 +30,26 @@ pub struct Plan {
 }
 
 pub use self::verified_scheduling::Bounds;
+
+/// FILEMAP can persist a wide timeout as a canonical decimal string so its
+/// original bytes also work with JCS-based registry identity producers.
+#[cfg(not(verus_keep_ghost))]
+pub(crate) fn declared_timeout<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Timeout {
+        Seconds(u64),
+        Decimal(String),
+    }
+    match Timeout::deserialize(d)? {
+        Timeout::Seconds(seconds) => Ok(seconds),
+        Timeout::Decimal(text) => text
+            .parse::<u64>()
+            .ok()
+            .filter(|n| *n > (1 << 53) - 1 && n.to_string() == text)
+            .ok_or_else(|| serde::de::Error::custom("invalid exact timeout")),
+    }
+}
 
 #[cfg(not(verus_keep_ghost))]
 impl Plan {
