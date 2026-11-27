@@ -1762,29 +1762,6 @@ fn execution_plan_queries_enforce_operation_identity_and_both_resource_limits() 
     };
     let result = read(json!({"test:ok":plan})).unwrap();
     assert_eq!(result["plans"]["test:ok"], plan);
-    for seconds in [1_u64 << 53, (1 << 53) + 1, u64::MAX] {
-        let mut numbers = plan.clone();
-        numbers["timeout_seconds"] = json!(seconds);
-        numbers["operation_bounds"]["b"]["timeout_seconds"] = json!(seconds);
-        let mut persisted = numbers.clone();
-        persisted["timeout_seconds"] = json!(seconds.to_string());
-        persisted["operation_bounds"]["b"]["timeout_seconds"] = json!(seconds.to_string());
-        assert_eq!(
-            read(json!({"test:ok":persisted})).unwrap(),
-            read(json!({"test:ok":numbers})).unwrap()
-        );
-    }
-    for invalid in [
-        "1",
-        "9007199254740991",
-        "09007199254740993",
-        "+9007199254740993",
-        "18446744073709551616",
-    ] {
-        let mut persisted = plan.clone();
-        persisted["timeout_seconds"] = json!(invalid);
-        assert!(read(json!({"test:ok":persisted})).is_err());
-    }
     for (field, invalid) in [
         ("operations", json!([])),
         ("operations", json!(["a", ""])),

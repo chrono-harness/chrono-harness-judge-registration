@@ -46,7 +46,7 @@ pub(crate) fn declared_timeout<'de, D: serde::Deserializer<'de>>(d: D) -> Result
         Timeout::Decimal(text) => text
             .parse::<u64>()
             .ok()
-            .filter(|n| *n > (1 << 53) - 1 && n.to_string() == text)
+            .filter(|n| verified_scheduling::decimal_timeout(*n) && n.to_string() == text)
             .ok_or_else(|| serde::de::Error::custom("invalid exact timeout")),
     }
 }

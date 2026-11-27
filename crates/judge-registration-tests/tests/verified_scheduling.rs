@@ -19,6 +19,13 @@ use vstd::vpanic as panic;
 
 verus! {
 
+#[cfg_attr(not(verus_keep_ghost), test)]
+fn persisted_decimal_starts_after_safe_integers() {
+    expect_protocol(!policy::decimal_timeout(9007199254740991u64));
+    expect_protocol(policy::decimal_timeout(9007199254740992u64));
+    expect_protocol(policy::decimal_timeout(18446744073709551615u64));
+}
+
 // Keep these checks executable in both the native and verified test.
 fn expect_protocol(ok: bool)
     requires ok,
@@ -111,4 +118,40 @@ fn coverage_requires_all_participants_and_allows_production_claims() {
     expect_protocol(!missing_first);
 }
 
+}
+
+#[cfg(not(verus_keep_ghost))]
+#[test]
+fn persisted_decimal_timeouts_match_original_numeric_plan_declarations() {
+    use serde_json::{Value, json};
+    let plan = json!({"operations":["b"],"timeout_seconds":1,"output_limit_bytes":1,
+                      "operation_bounds":{"b":{"timeout_seconds":1,"output_limit_bytes":1}}});
+    let read = |plans: Value| {
+        let q =
+            json!({"filemap":{"execution_plans":plans}, "projects":{"projects":[],"scripts":[]}});
+        execution::plan_declarations(q.to_string().as_bytes())
+    };
+    for seconds in [1_u64 << 53, (1 << 53) + 1, u64::MAX] {
+        let mut numbers = plan.clone();
+        numbers["timeout_seconds"] = json!(seconds);
+        numbers["operation_bounds"]["b"]["timeout_seconds"] = json!(seconds);
+        let mut persisted = numbers.clone();
+        persisted["timeout_seconds"] = json!(seconds.to_string());
+        persisted["operation_bounds"]["b"]["timeout_seconds"] = json!(seconds.to_string());
+        assert_eq!(
+            read(json!({"test:ok":persisted})).unwrap(),
+            read(json!({"test:ok":numbers})).unwrap()
+        );
+    }
+    for invalid in [
+        "1",
+        "9007199254740991",
+        "09007199254740993",
+        "+9007199254740993",
+        "18446744073709551616",
+    ] {
+        let mut persisted = plan.clone();
+        persisted["timeout_seconds"] = json!(invalid);
+        assert!(read(json!({"test:ok":persisted})).is_err());
+    }
 }

@@ -7,6 +7,11 @@ use vstd::prelude::*;
 
 verus! {
 
+/// Persisted decimal strings cover exactly the range above the safe integer bound.
+pub fn decimal_timeout(seconds: u64) -> (needed: bool)
+    ensures needed == (seconds as int > 9007199254740991),
+{ seconds > 9007199254740991u64 }
+
 /// The protocol checks timeout before output capacity and preserves both values.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ProtocolLimitError {
