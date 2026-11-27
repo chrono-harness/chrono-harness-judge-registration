@@ -1,16 +1,56 @@
 //! Registration facts used by FILEMAP for a pair of fixed endpoints.
+#![allow(unexpected_cfgs)]
+use vstd::prelude::*;
+
+verus! {
+/// An endpoint's original documents are interpreted under the host's configuration.
+pub trait EndpointDocuments: Sized {
+    type Snapshot;
+    type Error;
+    spec fn projected(&self, config: &str) -> Result<Self::Snapshot, Self::Error>;
+    fn interpret(self, config: &str) -> (result: Result<Self::Snapshot, Self::Error>)
+        ensures result == self.projected(config);
+}
+
+/// Interpret the base before the candidate and preserve the first error.
+pub fn interpret_pair<T: EndpointDocuments>(originals: (T, T), config: &str)
+    -> (result: Result<(T::Snapshot, T::Snapshot), T::Error>)
+    ensures result == match originals.0.projected(config) {
+        Err(error) => Err(error),
+        Ok(base) => match originals.1.projected(config) {
+            Err(error) => Err(error),
+            Ok(candidate) => Ok((base, candidate)),
+        }
+    },
+{
+    let (base, candidate) = originals;
+    let base = match base.interpret(config) { Ok(value) => value, Err(error) => return Err(error) };
+    match candidate.interpret(config) {
+        Ok(value) => Ok((base, value)),
+        Err(error) => Err(error),
+    }
+}
+}
+
+#[cfg(not(verus_keep_ghost))]
 use crate::facts;
+#[cfg(not(verus_keep_ghost))]
 use crate::{Registrations, ambiguity_repaired, execution::Scheduling};
+#[cfg(not(verus_keep_ghost))]
 use serde::Deserialize;
+#[cfg(not(verus_keep_ghost))]
 use serde_json::{Value, json};
+#[cfg(not(verus_keep_ghost))]
 use std::{
     collections::{BTreeMap, BTreeSet},
     io::Read,
     path::Path,
 };
 
+#[cfg(not(verus_keep_ghost))]
 type Documents = BTreeMap<String, String>;
 
+#[cfg(not(verus_keep_ghost))]
 #[derive(Deserialize)]
 #[serde(tag = "mode", rename_all = "kebab-case", deny_unknown_fields)]
 enum Operation {
@@ -45,13 +85,25 @@ enum Operation {
     },
 }
 
+#[cfg(not(verus_keep_ghost))]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Query {
     operation: Operation,
-    originals: [Documents; 2],
+    originals: (Documents, Documents),
 }
 
+#[cfg(not(verus_keep_ghost))]
+impl EndpointDocuments for Documents {
+    type Snapshot = facts::RegistrySnapshot;
+    type Error = String;
+
+    fn interpret(self, config: &str) -> Result<Self::Snapshot, Self::Error> {
+        snapshot(config, self)
+    }
+}
+
+#[cfg(not(verus_keep_ghost))]
 pub(crate) fn snapshot(
     config: &str,
     documents: Documents,
@@ -76,6 +128,7 @@ pub(crate) fn snapshot(
     })
 }
 
+#[cfg(not(verus_keep_ghost))]
 fn endpoint(registry: &Registrations) -> Result<Value, String> {
     let nodes = registry.node_data();
     let mut aliases = BTreeMap::<String, BTreeSet<String>>::new();
@@ -117,6 +170,7 @@ fn endpoint(registry: &Registrations) -> Result<Value, String> {
     }))
 }
 
+#[cfg(not(verus_keep_ghost))]
 fn pair(old: &Registrations, current: &Registrations) -> Result<Value, String> {
     let repaired: BTreeSet<_> = old
         .node_data()
@@ -131,6 +185,7 @@ fn pair(old: &Registrations, current: &Registrations) -> Result<Value, String> {
 }
 
 /// Use the original collection evidence only for the exact requested units.
+#[cfg(not(verus_keep_ghost))]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct MigrationInputs {
@@ -138,11 +193,13 @@ struct MigrationInputs {
     originals: crate::collection::FullManifest,
 }
 
+#[cfg(not(verus_keep_ghost))]
 pub fn query(root: &Path, input: impl Read) -> Result<Value, String> {
     let query = serde_json::from_reader(input).map_err(|error| error.to_string())?;
     project(root, query)
 }
 
+#[cfg(not(verus_keep_ghost))]
 pub(crate) fn workflow(
     root: &Path,
     request: crate::wire::Request,
@@ -153,11 +210,12 @@ pub(crate) fn workflow(
         root,
         Query {
             operation: Operation::Workflow { request, replay },
-            originals,
+            originals: originals.into(),
         },
     )
 }
 
+#[cfg(not(verus_keep_ghost))]
 pub(crate) fn projects(
     root: &Path,
     request: crate::wire::Request,
@@ -171,15 +229,16 @@ pub(crate) fn projects(
                 request,
                 validate_inputs,
             },
-            originals,
+            originals: originals.into(),
         },
     )
 }
 
+#[cfg(not(verus_keep_ghost))]
 fn project(root: &Path, query: Query) -> Result<Value, String> {
     let Query {
         operation,
-        originals: [before, after],
+        originals,
     } = query;
     let project_inputs = match &operation {
         Operation::Projects {
@@ -199,8 +258,8 @@ fn project(root: &Path, query: Query) -> Result<Value, String> {
         } => {
             facts::full_oid(&base)?;
             facts::full_oid(&candidate)?;
-            let before = snapshot(&config, before)?.values;
-            let after = snapshot(&config, after)?.values;
+            let (before, after) = interpret_pair(originals, &config)?;
+            let (before, after) = (before.values, after.values);
             let (old, current, facts) = if scheduling {
                 let reader = crate::historical_git::InstalledGit::configured(
                     root, &base, &candidate, &config,
@@ -264,10 +323,11 @@ fn project(root: &Path, query: Query) -> Result<Value, String> {
             .ok_or_else(|| "missing original migration inputs for the selected units".to_owned())
     };
     let project = || {
+        let (before, after) = interpret_pair(originals, &request.config_path)?;
         let (old, current, view) = crate::transition::views_from_snapshots(
             &request,
-            snapshot(&request.config_path, before)?,
-            snapshot(&request.config_path, after)?,
+            before,
+            after,
             if collection { Some(&load) } else { None },
             get_reader,
             !ci_collection,

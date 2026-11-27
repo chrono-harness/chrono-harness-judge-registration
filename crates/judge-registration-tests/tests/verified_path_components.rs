@@ -18,6 +18,28 @@ fn expect(condition: bool)
     if !condition { panic!(); }
 }
 
+pub struct Original(pub u8);
+
+impl registration::impact_views::EndpointDocuments for Original {
+    type Snapshot = u8;
+    type Error = u8;
+    open spec fn projected(&self, config: &str) -> Result<u8,u8> {
+        if self.0 < 128 { Ok(self.0) } else { Err(self.0) }
+    }
+    fn interpret(self, _config: &str) -> (result: Result<u8,u8>) {
+        if self.0 < 128 { Ok(self.0) } else { Err(self.0) }
+    }
+}
+
+#[cfg_attr(not(verus_keep_ghost), test)]
+fn endpoint_documents_keep_each_side_and_first_error() {
+    use registration::impact_views::interpret_pair;
+    expect(matches!(interpret_pair((Original(3),Original(7)), "config"), Ok((3,7))));
+    expect(matches!(interpret_pair((Original(3),Original(201)), "config"), Err(201)));
+    expect(matches!(interpret_pair((Original(155),Original(7)), "config"), Err(155)));
+    expect(matches!(interpret_pair((Original(155),Original(201)), "config"), Err(155)));
+}
+
 #[cfg(verus_keep_ghost)]
 fn checkout_facts_determine_dirtiness(observed: &str, different: &str, changes: usize)
     requires observed@ != different@, changes > 0,
