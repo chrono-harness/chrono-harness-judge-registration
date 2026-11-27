@@ -556,7 +556,15 @@ fn effective_projection_preserves_the_full_retained_blob_length() {
         "inputs": [{"id": "data", "location": "input.bin", "sha256": digest}]
     });
     let registrations = load(&documents);
-    for length in [0, u64::MAX] {
+    let mut identities = std::collections::BTreeSet::new();
+    for length in [
+        0,
+        (1_u64 << 53) - 1,
+        1_u64 << 53,
+        (1_u64 << 53) + 1,
+        u64::MAX - 1,
+        u64::MAX,
+    ] {
         let retained =
             json!({"blob": ".chrono-harness/state/input", "sha256": digest, "length": length});
         let Ok(inputs::Retained::Blob {
@@ -576,18 +584,26 @@ fn effective_projection_preserves_the_full_retained_blob_length() {
         let endpoints = json!({
             "base": endpoint("1".repeat(40)), "candidate": endpoint("2".repeat(40))
         });
-        let evidence = json!({
+        let legacy = json!({
             "schema": "chrono-effective-inputs/v1", "completeness_proven": false,
             "endpoints": endpoints, "identity": wire::digest(&endpoints).unwrap()
         });
+        let previous = inputs::project_effective(&legacy, &registrations, &registrations, None);
+        assert_eq!(previous.is_ok(), length < 1_u64 << 53);
+        let evidence = inputs::effective_evidence("chrono-effective-inputs/v1", endpoints).unwrap();
+        let bytes = wire::canonical(&evidence).unwrap();
+        let received = wire::decode(&bytes).unwrap();
         let projected =
-            inputs::project_effective(&evidence, &registrations, &registrations, None).unwrap();
+            inputs::project_effective(&received, &registrations, &registrations, None).unwrap();
         for name in ["base", "candidate"] {
-            assert_eq!(
-                projected["endpoints"][name]["files"]["data"]["length"].as_u64(),
-                Some(length)
-            );
+            let wire_length = &projected["endpoints"][name]["files"]["data"]["length"];
+            if length < 1_u64 << 53 {
+                assert_eq!(wire_length.as_u64(), Some(length));
+            } else {
+                assert_eq!(wire_length.as_str().unwrap(), length.to_string());
+            }
         }
         assert_eq!(projected["identity"], evidence["identity"]);
+        assert!(identities.insert(evidence["identity"].as_str().unwrap().to_owned()));
     }
 }

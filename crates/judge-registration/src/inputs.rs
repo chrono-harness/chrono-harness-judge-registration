@@ -661,6 +661,100 @@ pub fn endpoint_required_files(
     required_plan_files(old, Some(&selected))
 }
 
+/// Produce an endpoint document for transport through a binary64 JCS judge.
+/// Only the typed file length needs a decimal string outside the safe range.
+#[cfg(not(verus_keep_ghost))]
+pub fn effective_evidence(schema: &str, mut endpoints: Value) -> Result<Value, String> {
+    for name in ["base", "candidate"] {
+        let files = endpoints[name]["files"]
+            .as_object_mut()
+            .ok_or("effective input files missing")?;
+        for file in files.values_mut() {
+            if let Some(length) = file.get_mut("length") {
+                let n = length
+                    .as_u64()
+                    .ok_or("invalid effective input file length")?;
+                if n > MAX_SAFE_LENGTH {
+                    *length = Value::String(n.to_string());
+                }
+            }
+        }
+    }
+    let identity = effective_identity(schema, &endpoints, true)?;
+    Ok(
+        json!({"schema":schema, "identity_schema":EFFECTIVE_IDENTITY, "identity":identity,
+              "endpoints":endpoints, "completeness_proven":false}),
+    )
+}
+
+#[cfg(not(verus_keep_ghost))]
+const MAX_SAFE_LENGTH: u64 = (1 << 53) - 1;
+#[cfg(not(verus_keep_ghost))]
+const EFFECTIVE_IDENTITY: &str = "chrono-effective-input-identity/v2";
+
+#[cfg(not(verus_keep_ghost))]
+fn check_effective_identity(evidence: &Value) -> Result<(), String> {
+    let schema = evidence["schema"]
+        .as_str()
+        .ok_or("missing effective input schema")?;
+    if !matches!(
+        schema,
+        "chrono-effective-inputs/v1" | "chrono-effective-inputs/v2"
+    ) {
+        return Err("unknown effective input schema".into());
+    }
+    let exact = match evidence.get("identity_schema") {
+        None => false,
+        Some(value) if value == EFFECTIVE_IDENTITY => true,
+        _ => return Err("unknown effective input identity schema".into()),
+    };
+    let endpoints = &evidence["endpoints"];
+    for name in ["base", "candidate"] {
+        let Some(files) = endpoints[name].get("files") else {
+            if exact {
+                return Err("effective input files missing".into());
+            }
+            continue;
+        };
+        let files = files.as_object().ok_or("invalid effective input files")?;
+        for file in files.values() {
+            if let Some(value) = file.get("length") {
+                if value.as_u64().is_some_and(|n| n <= MAX_SAFE_LENGTH) {
+                    continue;
+                }
+                if exact
+                    && value.as_str().is_some_and(|s| {
+                        s.parse::<u64>()
+                            .is_ok_and(|n| n > MAX_SAFE_LENGTH && s == n.to_string())
+                    })
+                {
+                    continue;
+                }
+                return Err(if exact {
+                    "invalid exact effective input file length"
+                } else {
+                    "ambiguous legacy effective input length; regenerate from retained originals"
+                }
+                .into());
+            }
+        }
+    }
+    let calculated = effective_identity(schema, endpoints, exact)?;
+    if evidence["identity"] != calculated {
+        return Err("effective input identity mismatch".into());
+    }
+    Ok(())
+}
+
+#[cfg(not(verus_keep_ghost))]
+fn effective_identity(schema: &str, endpoints: &Value, exact: bool) -> Result<String, String> {
+    if exact {
+        wire::digest(&(EFFECTIVE_IDENTITY, schema, endpoints))
+    } else {
+        wire::digest(endpoints)
+    }
+}
+
 /// Compare original per-unit evidence with the same projection of the current
 /// collection obligations, retaining exact environment and endpoint bindings.
 #[cfg(not(verus_keep_ghost))]
@@ -673,9 +767,7 @@ pub fn project_effective(
     if evidence.is_null() {
         return Ok(Value::Null);
     }
-    if evidence["identity"] != wire::digest(&evidence["endpoints"])? {
-        return Err("effective input identity mismatch".into());
-    }
+    check_effective_identity(evidence)?;
     let mut projected = evidence.clone();
     for endpoint in ["base", "candidate"] {
         let required = endpoint_required_files(endpoint, old, new, scope)?;
@@ -689,7 +781,13 @@ pub fn project_effective(
         }
         files.retain(|id, _| required.contains(id));
     }
-    projected["identity"] = json!(wire::digest(&projected["endpoints"])?);
+    projected["identity"] = json!(effective_identity(
+        projected["schema"]
+            .as_str()
+            .ok_or("missing effective input schema")?,
+        &projected["endpoints"],
+        projected.get("identity_schema").is_some(),
+    )?);
     Ok(projected)
 }
 
@@ -910,10 +1008,7 @@ fn validate_endpoints(
         }
         endpoints.insert(name.into(),json!({"commit":endpoint.commit,"environment":effective.ok(),"inherited":inherited,"files":evidence}));
     }
-    let endpoints = Value::Object(endpoints);
-    Ok(
-        json!({"schema":effective_schema(old,new),"identity":wire::digest(&endpoints)?,"endpoints":endpoints,"completeness_proven":false}),
-    )
+    effective_evidence(effective_schema(old, new), Value::Object(endpoints))
 }
 
 #[cfg(not(verus_keep_ghost))]
@@ -942,9 +1037,8 @@ pub fn effective_environments(
     {
         return Ok(None);
     }
-    if evidence["schema"] != effective_schema(old, new)
-        || evidence["identity"] != wire::digest(&evidence["endpoints"])?
-    {
+    check_effective_identity(evidence)?;
+    if evidence["schema"] != effective_schema(old, new) {
         return Err("effective input identity missing/mismatched".into());
     }
     let mut pair = [BTreeMap::new(), BTreeMap::new()];

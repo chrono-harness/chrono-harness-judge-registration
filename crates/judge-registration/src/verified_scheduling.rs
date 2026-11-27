@@ -7,6 +7,11 @@ use vstd::prelude::*;
 
 verus! {
 
+/// Persisted decimal strings cover exactly the range above the safe integer bound.
+pub fn decimal_timeout(seconds: u64) -> (needed: bool)
+    ensures needed == (seconds as int > 9007199254740991),
+{ seconds > 9007199254740991u64 }
+
 /// The protocol checks timeout before output capacity and preserves both values.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ProtocolLimitError {
@@ -35,6 +40,7 @@ pub fn protocol_limits(time: Option<u64>, size: Option<u64>)
 #[cfg_attr(not(verus_keep_ghost), serde(deny_unknown_fields))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Bounds {
+    #[cfg_attr(not(verus_keep_ghost), serde(deserialize_with = "crate::execution::declared_timeout"))]
     pub timeout_seconds: u64,
     pub output_limit_bytes: usize,
 }
