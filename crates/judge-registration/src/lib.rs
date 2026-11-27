@@ -14,8 +14,7 @@ pub mod collection;
 pub mod execution;
 #[cfg(not(verus_keep_ghost))]
 pub mod facts;
-#[cfg(not(verus_keep_ghost))]
-mod historical_git;
+pub(crate) mod historical_git;
 pub mod impact_views;
 #[cfg(not(verus_keep_ghost))]
 mod input_coverage;
@@ -30,7 +29,6 @@ mod runner_session;
 pub mod wire;
 #[cfg(not(verus_keep_ghost))]
 pub use registrations::check_documents;
-#[cfg(not(verus_keep_ghost))]
 pub mod ci_transition;
 #[cfg(not(verus_keep_ghost))]
 pub mod route_views;

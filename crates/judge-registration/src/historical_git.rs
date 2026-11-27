@@ -1,12 +1,49 @@
 //! Fixed Git inputs used while interpreting historical registries.
+#[cfg(not(verus_keep_ghost))]
+use vstd::prelude::verus;
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
+
+verus! {
+/// Preserve the operation's outcome and publish the observation produced by a successful close.
+pub(crate) fn complete_read<T, O, P, E, F>(
+    action: core::result::Result<T, E>, closed: core::result::Result<O, E>, publish: F,
+) -> (out: (core::result::Result<T, E>, Option<P>))
+    where F: FnOnce(O) -> Option<P>,
+    requires forall|observation: O| closed == Ok::<O, E>(observation) ==> #[trigger] publish.requires((observation,)),
+    ensures match closed {
+        Ok(observation) => out.0 == action && publish.ensures((observation,), out.1),
+        Err(close_error) => out.1.is_none() && out.0 == match action {
+            Err(action_error) => Err::<T, E>(action_error),
+            Ok(_) => Err::<T, E>(close_error),
+        },
+    },
+{
+    match closed {
+        Ok(observation) => (action, publish(observation)),
+        Err(close_error) => match action {
+            Err(action_error) => (Err(action_error), None),
+            Ok(_) => (Err(close_error), None),
+        },
+    }
+}
+}
+
+#[cfg(not(verus_keep_ghost))]
 use crate::runner_session::Stream;
+#[cfg(not(verus_keep_ghost))]
 use crate::wire::{Checkout, Delta, Request, Response};
+#[cfg(not(verus_keep_ghost))]
 use serde::de::DeserializeOwned;
+#[cfg(not(verus_keep_ghost))]
 use serde_json::{Value, json};
+#[cfg(not(verus_keep_ghost))]
 use std::{cell::RefCell, collections::BTreeMap, path::Path};
 
+#[cfg(not(verus_keep_ghost))]
 type Result<T> = std::result::Result<T, String>;
 
+#[cfg(not(verus_keep_ghost))]
 pub(crate) struct InstalledGit<'a> {
     root: &'a Path,
     base: Option<&'a str>,
@@ -14,17 +51,20 @@ pub(crate) struct InstalledGit<'a> {
     config: &'a str,
     stream: RefCell<Stream>,
 }
+#[cfg(not(verus_keep_ghost))]
 #[derive(serde::Deserialize)]
 pub(crate) struct Entry {
     pub(crate) kind: String,
     pub(crate) mode: String,
 }
+#[cfg(not(verus_keep_ghost))]
 #[derive(serde::Deserialize)]
 pub(crate) struct Inventory {
     pub(crate) entries: BTreeMap<String, Entry>,
     pub(crate) delta: Option<Vec<Delta>>,
 }
 
+#[cfg(not(verus_keep_ghost))]
 impl<'a> InstalledGit<'a> {
     pub(crate) fn open(request: &'a Request) -> Result<Self> {
         request.validate()?;
@@ -133,10 +173,13 @@ impl<'a> InstalledGit<'a> {
             Err(error) => return (Err(error), None),
         };
         let result = action(&reader);
-        match reader.finish() {
-            Ok(observation) => (result, (!observation.is_null()).then_some(observation)),
-            Err(error) => (result.and(Err(error)), None),
-        }
+        complete_read(result, reader.finish(), |observation| {
+            if observation.is_null() {
+                None
+            } else {
+                Some(observation)
+            }
+        })
     }
     pub(crate) fn inventory(&self) -> Result<Inventory> {
         self.query(json!({"op":"candidate-inventory"}))
@@ -175,6 +218,7 @@ impl<'a> InstalledGit<'a> {
         Ok(observation)
     }
 }
+#[cfg(not(verus_keep_ghost))]
 impl InstalledGit<'_> {
     pub(crate) fn blob(&self, root: &Path, commit: &str, path: &str) -> Result<Vec<u8>> {
         self.endpoint(root, commit)?;

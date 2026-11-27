@@ -15,6 +15,39 @@ use vstd::vpanic as panic;
 mod registration_contract;
 
 verus! {
+#[cfg(verus_keep_ghost)]
+fn read_completion_retains_the_original_action_and_only_publishes_a_completed_observation() {
+    use registration::historical_git::complete_read;
+    let publish = |receipt: u8| -> (out: Option<u8>) ensures out == Some(receipt), { Some(receipt) };
+    let forbidden = |_receipt: u8| -> (out: Option<u8>) requires false, { None };
+    let success = complete_read(Ok::<u8, u8>(7), Ok(31u8), publish);
+    assert(success == (Ok::<u8, u8>(7), Some(31u8)));
+    let failure = complete_read(Err::<u8, u8>(5), Ok(31u8), publish);
+    assert(failure == (Err::<u8, u8>(5), Some(31u8)));
+    let suppress = |_receipt: u8| -> (out: Option<u8>) ensures out.is_none(), { None };
+    let omitted = complete_read(Err::<u8, u8>(5), Ok(31u8), suppress);
+    assert(omitted == (Err::<u8, u8>(5), None::<u8>));
+    let close_failed = complete_read(Ok::<u8, u8>(7), Err(9u8), forbidden);
+    assert(close_failed == (Err::<u8, u8>(9), None::<u8>));
+    let both_failed = complete_read(Err::<u8, u8>(5), Err(9u8), forbidden);
+    assert(both_failed == (Err::<u8, u8>(5), None::<u8>));
+}
+
+#[cfg(verus_keep_ghost)]
+fn ci_observations_follow_the_binding_and_preserve_the_first_error() {
+    use registration::ci_transition::complete_transition;
+    let requested = complete_transition(Err::<u8, u8>(5), Ok(Some(31u8)), true);
+    assert(requested == (Err::<u8, u8>(5), Some(31u8)));
+    let unrequested = complete_transition(Ok::<u8, u8>(7), Ok(Some(31u8)), false);
+    assert(unrequested == (Ok::<u8, u8>(7), None::<u8>));
+    let unopened = complete_transition(Ok::<u8, u8>(7), Ok(None::<u8>), true);
+    assert(unopened == (Ok::<u8, u8>(7), None::<u8>));
+    let close_failed = complete_transition(Ok::<u8, u8>(7), Err::<Option<u8>, u8>(9), false);
+    assert(close_failed == (Err::<u8, u8>(9), None::<u8>));
+    let both_failed = complete_transition(Err::<u8, u8>(5), Err::<Option<u8>, u8>(9), true);
+    assert(both_failed == (Err::<u8, u8>(5), None::<u8>));
+}
+
 
 fn expect(condition: bool)
     requires condition,
