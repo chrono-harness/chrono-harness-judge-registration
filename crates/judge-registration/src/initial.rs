@@ -1,13 +1,44 @@
 //! Initial inventory checks share reference policy without inventing prior history.
+#[cfg(not(verus_keep_ghost))]
+use vstd::prelude::verus;
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
+
+verus! {
+/// An inventory root declares every governed registry proposed and has never activated enforcement.
+pub(crate) fn initial_state(statuses: [Option<&str>; 5], enforcement: Option<&str>)
+    -> (accepted: bool)
+    ensures accepted == (super::facts::same_text(enforcement, "not-implemented")
+        && forall|i: int| 0 <= i < 5 ==> super::facts::same_text(#[trigger] statuses@[i], "proposed")),
+{
+    broadcast use vstd::array::group_array_axioms;
+    for i in 0..5usize
+        invariant forall|j: int| 0 <= j < i ==> super::facts::same_text(#[trigger] statuses@[j], "proposed"),
+    {
+        if !super::facts::matches_text(statuses[i], "proposed") { return false; }
+    }
+    super::facts::matches_text(enforcement, "not-implemented")
+}
+}
+
+#[cfg(not(verus_keep_ghost))]
 use crate::facts;
+#[cfg(not(verus_keep_ghost))]
 use crate::inputs::checked_path;
+#[cfg(not(verus_keep_ghost))]
 use crate::wire::sha256;
+#[cfg(not(verus_keep_ghost))]
 use crate::wire::{self, Response, Status};
+#[cfg(not(verus_keep_ghost))]
 use crate::{Registrations, Result, historical_git::InstalledGit, issue};
+#[cfg(not(verus_keep_ghost))]
 use serde_json::{Value, json};
+#[cfg(not(verus_keep_ghost))]
 use std::fs;
 
+#[cfg(not(verus_keep_ghost))]
 use crate::wire::InitialRequest as Request;
+#[cfg(not(verus_keep_ghost))]
 pub fn judge(req: &Request) -> Response {
     let mut response = req.response(Status::Pass);
     let result = req.validate().and_then(|()| {
@@ -28,6 +59,7 @@ pub fn judge(req: &Request) -> Response {
     response
 }
 
+#[cfg(not(verus_keep_ghost))]
 fn evaluate(req: &Request, response: &mut Response, reader: &InstalledGit) -> Result<()> {
     req.validate()?;
     let root = &req.candidate.root;
@@ -93,17 +125,15 @@ fn evaluate(req: &Request, response: &mut Response, reader: &InstalledGit) -> Re
     // registry documents.  Check the documents owned by the loaded view so a
     // selected initial profile is judged by the same proposed-state contract
     // as a direct profile.
-    if [
+    let statuses = [
         r.config(),
         r.judges(),
         r.projects(),
         r.filemap(),
         r.workflow(),
     ]
-    .iter()
-    .any(|v| v["status"] != "proposed")
-        || r.config()["enforcement"] != "not-implemented"
-    {
+    .map(|document| document["status"].as_str());
+    if !initial_state(statuses, r.config()["enforcement"].as_str()) {
         return Err(
             "initial inventory retains proposed registries; activation requires a real DELTA"
                 .into(),

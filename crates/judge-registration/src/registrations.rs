@@ -1,8 +1,40 @@
 //! Shared strict registration data; loading does not assert readiness or semantic validity.
+#[cfg(not(verus_keep_ghost))]
+use vstd::prelude::verus;
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
+
+verus! {
+/// Resolve the declared path first and keep the original document returned by that lookup.
+pub(crate) fn registered_document<'a, T, F>(path: Option<&str>, lookup: F)
+    -> (answer: std::result::Result<&'a T, &'static str>)
+    where F: FnOnce(&str) -> Option<&'a T>,
+    requires forall|name: &str| lookup.requires((name,)),
+    ensures match path {
+        None => answer matches Err(e) && e@ == "missing registry path"@,
+        Some(name) => exists|value: Option<&'a T>| #[trigger] lookup.ensures((name,), value)
+            && match value {
+                Some(original) => answer == Ok::<_, &str>(original),
+                None => answer matches Err(e) && e@ == "missing registry bytes"@,
+            },
+    },
+{
+    let Some(name) = path else { return Err("missing registry path"); };
+    let value = lookup(name);
+    assert(lookup.ensures((name,), value));
+    match value { Some(original) => Ok(original), None => Err("missing registry bytes") }
+}
+}
+
+#[cfg(not(verus_keep_ghost))]
 use crate::facts;
+#[cfg(not(verus_keep_ghost))]
 use crate::{NodeKind, Result, schema};
+#[cfg(not(verus_keep_ghost))]
 use serde_json::Value;
+#[cfg(not(verus_keep_ghost))]
 use std::collections::{BTreeMap, BTreeSet};
+#[cfg(not(verus_keep_ghost))]
 pub struct Registrations {
     entry_path: String,
     effective_path: String,
@@ -16,6 +48,7 @@ pub struct Registrations {
     pub(crate) historical: BTreeMap<String, Vec<(String, Value)>>,
     pub(crate) original_schemas: BTreeMap<String, (String, u64)>,
 }
+#[cfg(not(verus_keep_ghost))]
 /// Validate a caller's fixed registry documents and identify the admitted configuration.
 pub fn check_documents(input: impl std::io::Read) -> Result<String> {
     #[derive(serde::Deserialize)]
@@ -29,6 +62,7 @@ pub fn check_documents(input: impl std::io::Read) -> Result<String> {
     Ok(registered.effective_config_path().to_owned())
 }
 
+#[cfg(not(verus_keep_ghost))]
 impl Registrations {
     pub fn load(v: &BTreeMap<String, Value>, config_path: &str) -> Result<Self> {
         let identity = facts::registry_identity(v, config_path)
@@ -39,13 +73,9 @@ impl Registrations {
             .clone();
         schema::config(&config).map_err(|e| format!("config: {e}"))?;
         let get = |k: &str| -> Result<Value> {
-            Ok(v.get(
-                config["registries"][k]
-                    .as_str()
-                    .ok_or("missing registry path")?,
-            )
-            .ok_or("missing registry bytes")?
-            .clone())
+            registered_document(config["registries"][k].as_str(), |path| v.get(path))
+                .cloned()
+                .map_err(String::from)
         };
         let mut s = Self {
             entry: v[config_path].clone(),
@@ -309,17 +339,20 @@ impl Registrations {
         nodes
     }
 }
+#[cfg(not(verus_keep_ghost))]
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct NodeDefinition<'a> {
     /// Identity of the defining record, e.g. project:t or script:t for the alias test:t.
     pub identity: String,
     pub value: &'a Value,
 }
+#[cfg(not(verus_keep_ghost))]
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct NodeView<'a> {
     pub kind: NodeKind,
     pub definitions: Vec<NodeDefinition<'a>>,
 }
+#[cfg(not(verus_keep_ghost))]
 impl<'a> NodeView<'a> {
     pub fn unique(&self) -> Option<&NodeDefinition<'a>> {
         match self.definitions.as_slice() {

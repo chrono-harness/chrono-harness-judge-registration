@@ -7,7 +7,6 @@ pub use schema::validate_reference_syntax;
 pub use schema::{ObjectFieldError, object_error_parts, reference_syntax, validate_object_fields};
 // Registration owns full-format schema, snapshot and affected-reference admissibility.
 pub mod classification_inputs;
-#[cfg(not(verus_keep_ghost))]
 pub mod collection;
 #[cfg(verus_keep_ghost)]
 #[path = "main.rs"]
@@ -17,13 +16,11 @@ pub mod execution;
 pub mod facts;
 pub(crate) mod historical_git;
 pub mod impact_views;
-#[cfg(not(verus_keep_ghost))]
-mod input_coverage;
+pub(crate) mod input_coverage;
 #[cfg(not(verus_keep_ghost))]
 pub mod inputs;
 pub mod project_views;
-#[cfg(not(verus_keep_ghost))]
-mod registrations;
+pub(crate) mod registrations;
 pub(crate) mod runner_session;
 pub mod wire;
 #[cfg(not(verus_keep_ghost))]
@@ -46,7 +43,6 @@ pub mod verified_readiness;
 #[allow(unexpected_cfgs)]
 pub mod verified_scheduling;
 pub mod workflow_views;
-#[cfg(not(verus_keep_ghost))]
 pub mod worktree;
 #[cfg(not(verus_keep_ghost))]
 pub use transition::{
@@ -56,7 +52,6 @@ pub use transition::{
 };
 #[cfg(not(verus_keep_ghost))]
 pub use verified_nodes::NodeKind;
-#[cfg(not(verus_keep_ghost))]
 pub mod initial;
 pub(crate) mod schema;
 #[cfg(not(verus_keep_ghost))]
