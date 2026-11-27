@@ -106,3 +106,5 @@ stdout 返回 `previous`、`candidate`、本次额外产生的 `git_facts` 和 `
 运行 `mise run harness-maintain-checks` 可执行一轮本仓的检查产物维护。已到期的成功报告在读取和交付义务结束后释放，后续维护轮次回收失去引用的原件。没有业务事件或显式维护时，到期的文件会继续占用磁盘。
 
 projects v2 的专属测试可以用 `assertion_helpers` 将自己负责的某个测试身份绑定到承担断言的操作。例如 `{"test:word_count_test":["words.check-result"]}`。每条绑定需要该测试行拥有的明确测试身份，以及非空、无重复的操作 ID 列表。执行计划及操作原件由采用此字段的 projects 判官核对。
+
+有效输入证据保留配置选定的 `chrono-effective-inputs/v1` 或 `v2`。新生产者设置 `identity_schema: "chrono-effective-input-identity/v2"`，身份是对三项数组 `[identity_schema, schema, endpoints]` 做 RFC 8785 JCS 后的 SHA-256。文件长度从 0 到 9007199254740991 使用 JSON 整数，更大的 u64 使用无前导零的十进制字符串。收集和项目投影先核对原身份，再为筛选后的端点计算同版本的身份。清单中没有 `identity_schema` 时，读取器按旧版 JCS 验证安全范围内的长度。超出该范围的旧记录需要用原始留存输入重新生成。
