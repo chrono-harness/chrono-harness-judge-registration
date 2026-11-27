@@ -16,6 +16,67 @@ mod registration_contract;
 
 verus! {
 #[cfg(verus_keep_ghost)]
+fn input_view_requires_all_three_original_identities() {
+    use registration::facts::InputViewIdentity;
+    let id = InputViewIdentity { base: "base", candidate: "head", registry: "digest" };
+    proof { reveal_strlit("base"); reveal_strlit("head"); reveal_strlit("digest"); }
+    let actual = id.matches(Some("base"), Some("head"), Some("digest"));
+    assert(actual);
+    let actual = id.matches(Some("head"), Some("base"), Some("digest"));
+    assert(!actual);
+    let actual = id.matches(Some("base"), Some("base"), Some("digest"));
+    assert(!actual);
+    let actual = id.matches(Some("base"), Some("head"), Some("head"));
+    assert(!actual);
+    let actual = id.matches(None, Some("head"), Some("digest"));
+    assert(!actual);
+    let actual = id.matches(Some("base"), None, Some("digest"));
+    assert(!actual);
+    let actual = id.matches(Some("base"), Some("head"), None);
+    assert(!actual);
+}
+
+#[cfg(verus_keep_ghost)]
+fn routes_bind_the_context_before_choosing_the_input_evidence() {
+    use registration::route_views::{input_validation, InputValidation};
+    proof { reveal_strlit("context"); reveal_strlit("other"); }
+    let live = input_validation(true, Some("context"), "context", false);
+    assert(live == Ok::<_, &str>(InputValidation::Live));
+    let collect = input_validation(true, Some("context"), "context", true);
+    assert(collect == Ok::<_, &str>(InputValidation::Collection));
+    let changed = input_validation(true, Some("other"), "context", false);
+    let missing = input_validation(true, None, "context", true);
+    let unbound = input_validation(false, Some("context"), "context", true);
+    assert(changed matches Err(e) && e@ == "route input registration view binding mismatch"@);
+    assert(missing matches Err(e) && e@ == "route input registration view binding mismatch"@);
+    assert(unbound matches Err(e) && e@ == "route input registration view binding mismatch"@);
+}
+
+#[cfg(verus_keep_ghost)]
+fn executor_sees_projects_and_scripts_but_excludes_lookalikes() {
+    use registration::project_views::project_owner;
+    broadcast use vstd::array::group_array_axioms;
+    let project = [b'p', b'r', b'o', b'j', b'e', b'c', b't', b':', b'a'];
+    let script = [b's', b'c', b'r', b'i', b'p', b't', b':', b'b'];
+    let lookalike = [b's', b'c', b'r', b'i', b'p', b't', b's', b':', b'b'];
+    let short = [b'p', b'r', b'o', b'j', b'e', b'c', b't'];
+    let unrelated = [b't', b'e', b's', b't', b':', b'a'];
+    assert(project@.take(8) =~= seq![b'p', b'r', b'o', b'j', b'e', b'c', b't', b':']);
+    assert(script@.take(7) =~= seq![b's', b'c', b'r', b'i', b'p', b't', b':']);
+    assert(lookalike@[6] != b':');
+    let included = project_owner(&project);
+    assert(included);
+    let included = project_owner(&script);
+    assert(included);
+    let included = project_owner(&lookalike);
+    assert(!included);
+    let included = project_owner(&short);
+    assert(!included);
+    let included = project_owner(&unrelated);
+    assert(!included);
+}
+
+#[cfg(verus_keep_ghost)]
 fn replacement_and_joint_removal_use_the_matching_validator_and_return_original_failures() {
     use registration::transition::decide_retirement;
     let valid = |_to: &u8| -> (r: Result<(), u8>) ensures r == Ok::<(), u8>(()), { Ok(()) };
