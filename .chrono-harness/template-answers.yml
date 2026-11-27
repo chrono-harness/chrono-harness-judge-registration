@@ -1,4 +1,4 @@
-_commit: v0.1.39
+_commit: v0.1.51-alpha.167
 _src_path: gh:chrono-harness/chrono-harness-copier
 dev_branch: dev
 expire_local_check_slots:
@@ -42,3 +42,4 @@ dependabot_auto_merge: true
 dependabot_updates:
 - {"package-ecosystem": "github-actions", "directory": "/", "schedule": {"interval": "daily"}, "groups": {"github-actions": {"patterns": ["*"]}}}
 - {"package-ecosystem": "cargo", "schedule": {"interval": "daily"}, "groups": {"cargo": {"patterns": ["*"]}}, "directories": ["/crates/judge-registration", "/crates/judge-registration-tests", "/crates/registration-fixture"]}
+check_landed_dependencies: true
