@@ -527,7 +527,16 @@
           "kind": "test-execution",
           "to": "test:judge-registration-tests"
         }
-      ]
+      ],
+      "verification": {
+        "role": "program",
+        "roots": [
+          {
+            "path": "crates/judge-registration-tests/tests/verified_scheduling.rs",
+            "operation": "verify.registration-scheduling-tests"
+          }
+        ]
+      }
     },
     {
       "path": "crates/judge-registration-tests/Cargo.lock",
