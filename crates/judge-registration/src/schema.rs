@@ -1,10 +1,136 @@
 #![allow(unexpected_cfgs)]
+use vstd::hash_set::StringHashSet;
 #[cfg(not(verus_keep_ghost))]
 use vstd::prelude::verus;
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
 
 verus! {
+pub(crate) fn project_registry_languages(version: Option<u64>)
+    -> (out: std::result::Result<bool, &'static str>)
+    ensures match version {
+        Some(1) => out == Ok::<_, &str>(false),
+        Some(2) => out == Ok::<_, &str>(true),
+        _ => out matches Err(message) && message@ == "unsupported schema_version; migration evidence required"@,
+    },
+{
+    match version {
+        Some(1) => Ok(false),
+        Some(2) => Ok(true),
+        _ => Err("unsupported schema_version; migration evidence required"),
+    }
+}
+
+pub(crate) fn project_registry_required(project: bool, languages: bool)
+    -> (fields: Vec<&'static str>)
+    ensures
+        fields@.len() == if languages { 4int } else { 3int },
+        fields@[0]@ == "id"@,
+        fields@[1]@ == if project { "kind"@ } else { "path"@ },
+        fields@[2]@ == "actions"@,
+        languages ==> fields@[3]@ == "language"@,
+{
+    let identity = if project { "kind" } else { "path" };
+    let mut fields = vec!["id", identity, "actions"];
+    if languages {
+        fields.push("language");
+    }
+    fields
+}
+
+pub(crate) fn project_registry_kind(kind: &str) -> (out: std::result::Result<bool, ()>)
+    ensures
+        out.is_ok() == (kind@ == "production"@ || kind@ == "test"@),
+        out matches Ok(production) ==> production == (kind@ == "production"@),
+{
+    if kind == "production" {
+        Ok(true)
+    } else if kind == "test" {
+        Ok(false)
+    } else {
+        Err(())
+    }
+}
+
+pub(crate) fn project_registry_language(languages: bool, name: Option<&str>) -> (valid: bool)
+    ensures valid == (!languages || (name matches Some(text) && text@.len() > 0)),
+{
+    !languages || matches!(name, Some(text) if !text.is_empty())
+}
+
+/// A project names the field required by its kind. A script uses the field it declared.
+pub(crate) fn project_registry_pair(
+    production: Option<bool>, forward: bool, reverse: bool,
+) -> (out: std::result::Result<&'static str, ()>)
+    ensures
+        out.is_ok() == (forward != reverse),
+        out matches Ok(field) ==> field@ == match production {
+            Some(true) => "test_project"@,
+            Some(false) => "tests_for"@,
+            None => if forward { "test_script"@ } else { "tests_for"@ },
+        },
+{
+    if forward == reverse {
+        return Err(());
+    }
+    Ok(match production {
+        Some(true) => "test_project",
+        Some(false) => "tests_for",
+        None if forward => "test_script",
+        None => "tests_for",
+    })
+}
+
+pub(crate) fn assertion_helpers_allowed(languages: bool, tests_for: bool) -> (allowed: bool)
+    ensures allowed == (languages && tests_for),
+{
+    languages && tests_for
+}
+
+pub(crate) fn assertion_helper_owner(count: usize, first: Option<&str>, owner: &str) -> (allowed: bool)
+    ensures allowed == (count == 1 && (first matches Some(bound) && bound@ == owner@)),
+{
+    count == 1 && matches!(first, Some(bound) if bound == owner)
+}
+
+pub(crate) fn assertion_operations_nonempty(count: usize) -> (allowed: bool)
+    ensures allowed == (count > 0),
+{
+    count > 0
+}
+
+pub(crate) enum AssertionOperationError<'a> {
+    ExpectedName,
+    Duplicate(&'a str),
+}
+
+pub(crate) fn admit_assertion_operation<'a>(
+    name: Option<&'a str>, seen: &mut StringHashSet,
+) -> (out: std::result::Result<(), AssertionOperationError<'a>>)
+    requires old(seen).well_formed(),
+    ensures
+        final(seen).well_formed(),
+        match name {
+            Some(name) if name@.len() > 0 => {
+                &&& if old(seen)@.contains(name@) {
+                    out matches Err(AssertionOperationError::Duplicate(value)) && value@ == name@
+                } else { out.is_ok() }
+                &&& final(seen)@ == old(seen)@.insert(name@)
+            }
+            _ => out matches Err(AssertionOperationError::ExpectedName) && final(seen)@ == old(seen)@,
+        },
+{
+    match name {
+        Some(name) if !name.is_empty() => {
+            if !seen.insert(name.to_owned()) {
+                return Err(AssertionOperationError::Duplicate(name));
+            }
+            Ok(())
+        }
+        _ => Err(AssertionOperationError::ExpectedName),
+    }
+}
+
 /// Keep the scheduling decision and translate its specific field error to the caller's diagnostic.
 pub(crate) fn registration_limits(time: Option<u64>, size: Option<u64>)
     -> (out: std::result::Result<(u64, u64), &'static str>)
@@ -567,20 +693,23 @@ pub(crate) fn project_bindings(
     std::collections::BTreeMap<String, Vec<crate::execution::TestBinding>>,
     String,
 > {
-    common_versions(v, &["owners", "projects", "scripts"], &[1, 2])?;
-    let languages = v["schema_version"] == 2;
+    object(
+        v,
+        &["schema_version", "status", "owners", "projects", "scripts"],
+        &[],
+    )?;
+    let languages = project_registry_languages(v["schema_version"].as_u64())?;
+    choice(&v["status"], &["active", "proposed"])?;
     unique(&v["owners"], None)?;
     unique(&v["projects"], Some("id"))?;
     unique(&v["scripts"], Some("id"))?;
+    let project_required = project_registry_required(true, languages);
+    let script_required = project_registry_required(false, languages);
     for p in array(&v["projects"])? {
         let owner = |error: String| format!("project {}: {error}", p["id"]);
         object(
             p,
-            if languages {
-                &["id", "kind", "actions", "language"]
-            } else {
-                &["id", "kind", "actions"]
-            },
+            &project_required,
             &[
                 "test_project",
                 "tests_for",
@@ -592,60 +721,62 @@ pub(crate) fn project_bindings(
             ],
         )
         .map_err(owner)?;
-        choice(&p["kind"], &["production", "test"])?;
-        if languages {
-            string(&p["language"]).map_err(|e| owner(format!("language: {e}")))?;
+        let kind = string(&p["kind"])?;
+        let production =
+            project_registry_kind(kind).map_err(|()| format!("unsupported value {kind}"))?;
+        if !project_registry_language(languages, p["language"].as_str()) {
+            return Err(owner("language: expected nonempty string".into()));
         }
-        if p.get("test_project").is_some() == p.get("tests_for").is_some() {
-            return Err(format!(
-                "E_TEST_PAIR: project:{} requires exactly one of test_project or tests_for",
-                string(&p["id"])?
-            ));
-        }
+        let pair = project_registry_pair(
+            Some(production),
+            p.get("test_project").is_some(),
+            p.get("tests_for").is_some(),
+        );
+        let pair = match pair {
+            Ok(field) => field,
+            Err(()) => {
+                return Err(format!(
+                    "E_TEST_PAIR: project:{} requires exactly one of test_project or tests_for",
+                    string(&p["id"])?
+                ));
+            }
+        };
         for k in ["manifest", "lockfile", "root"] {
             if let Some(value) = p.get(k) {
                 path(value)?;
             }
         }
         actions(&p["actions"])?;
-        string(
-            &p[if p["kind"] == "production" {
-                "test_project"
-            } else {
-                "tests_for"
-            }],
-        )?;
+        string(&p[pair])?;
     }
     for s in array(&v["scripts"])? {
         let owner = |error: String| format!("script {} at {}: {error}", s["id"], s["path"]);
         object(
             s,
-            if languages {
-                &["id", "path", "actions", "language"]
-            } else {
-                &["id", "path", "actions"]
-            },
+            &script_required,
             &["test_script", "tests_for", "assertion_helpers"],
         )
         .map_err(owner)?;
-        if languages {
-            string(&s["language"]).map_err(|e| owner(format!("language: {e}")))?;
+        if !project_registry_language(languages, s["language"].as_str()) {
+            return Err(owner("language: expected nonempty string".into()));
         }
         path(&s["path"])?;
         actions(&s["actions"])?;
-        if s.get("test_script").is_some() == s.get("tests_for").is_some() {
-            return Err(format!(
-                "E_TEST_PAIR: script:{} requires exactly one of test_script or tests_for",
-                string(&s["id"])?
-            ));
-        }
-        string(
-            &s[if s.get("test_script").is_some() {
-                "test_script"
-            } else {
-                "tests_for"
-            }],
-        )?;
+        let pair = project_registry_pair(
+            None,
+            s.get("test_script").is_some(),
+            s.get("tests_for").is_some(),
+        );
+        let pair = match pair {
+            Ok(field) => field,
+            Err(()) => {
+                return Err(format!(
+                    "E_TEST_PAIR: script:{} requires exactly one of test_script or tests_for",
+                    string(&s["id"])?
+                ));
+            }
+        };
+        string(&s[pair])?;
     }
     let bindings = crate::execution::test_bindings(v)?;
     for (key, prefix) in [("projects", "project"), ("scripts", "script")] {
@@ -653,7 +784,7 @@ pub(crate) fn project_bindings(
             let Some(helpers) = row.get("assertion_helpers") else {
                 continue;
             };
-            if !languages || row.get("tests_for").is_none() {
+            if !assertion_helpers_allowed(languages, row.get("tests_for").is_some()) {
                 return Err("assertion_helpers requires a schema v2 dedicated test".into());
             }
             let owner = format!("{prefix}:{}", string(&row["id"])?);
@@ -661,20 +792,31 @@ pub(crate) fn project_bindings(
                 .as_object()
                 .ok_or("assertion_helpers must map test identities to operations")?
             {
-                if !bindings
-                    .get(test)
-                    .is_some_and(|entries| entries.len() == 1 && entries[0].owner == owner)
-                {
+                let entries = bindings.get(test).map_or(&[][..], Vec::as_slice);
+                let bound = entries.first().map(|entry| entry.owner.as_str());
+                if !assertion_helper_owner(entries.len(), bound, &owner) {
                     return Err(format!(
                         "E_TEST_BINDING: {test} is not a dedicated test of {owner}"
                     ));
                 }
-                if array(operations)?.is_empty() {
+                let operations = array(operations)?;
+                if !assertion_operations_nonempty(operations.len()) {
                     return Err(format!(
                         "assertion_helpers: empty operation list for {test}"
                     ));
                 }
-                unique(operations, None)?;
+                let mut seen = StringHashSet::new();
+                for operation in operations {
+                    match admit_assertion_operation(operation.as_str(), &mut seen) {
+                        Ok(()) => (),
+                        Err(AssertionOperationError::ExpectedName) => {
+                            return Err("expected nonempty string".into());
+                        }
+                        Err(AssertionOperationError::Duplicate(name)) => {
+                            return Err(format!("duplicate ID {name}"));
+                        }
+                    }
+                }
             }
         }
     }

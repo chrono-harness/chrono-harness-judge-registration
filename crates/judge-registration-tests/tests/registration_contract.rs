@@ -55,6 +55,81 @@ fn metadata_acceptance_distinguishes_all_ascii_cases_from_neighbors() {
 }
 
 #[test]
+fn project_registry_query_preserves_first_error_during_pair_and_helper_repairs() {
+    use chrono_judge_registration::project_views::check_projects;
+
+    let action = json!({"execute":{"operation":"probe","tool":"host","argv":[]}});
+    let mut registry = json!({
+        "schema_version": 2, "status": "active", "owners": [],
+        "projects": [
+            {"id":"p","kind":"production","test_project":"t","tests_for":"t","root":"../bad","actions":action},
+            {"id":"t","kind":"test","tests_for":"p","language":"rust","actions":action}
+        ],
+        "scripts": [
+            {"id":"s","path":"s.py","test_script":"st","tests_for":"st","language":"python","actions":{}},
+            {"id":"st","path":"st.py","tests_for":"s","language":"python","actions":action,
+                "assertion_helpers":{"test:t":[]}}
+        ]
+    });
+    let query = |value: &Value| check_projects(serde_json::to_vec(value).unwrap().as_slice());
+    assert_eq!(
+        query(&registry).unwrap_err(),
+        "project \"p\": missing field language"
+    );
+    registry["projects"][0]["language"] = "rust".into();
+    assert_eq!(
+        query(&registry).unwrap_err(),
+        "E_TEST_PAIR: project:p requires exactly one of test_project or tests_for"
+    );
+    registry["projects"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("test_project");
+    assert_eq!(
+        query(&registry).unwrap_err(),
+        "invalid relative path: \"../bad\""
+    );
+    registry["projects"][0]["root"] = "src".into();
+    assert_eq!(query(&registry).unwrap_err(), "expected nonempty string");
+    registry["projects"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("tests_for");
+    registry["projects"][0]["test_project"] = "t".into();
+    assert_eq!(query(&registry).unwrap_err(), "empty actions");
+    registry["scripts"][0]["path"] = "../bad".into();
+    assert_eq!(
+        query(&registry).unwrap_err(),
+        "invalid relative path: \"../bad\""
+    );
+    registry["scripts"][0]["path"] = "s.py".into();
+    registry["scripts"][0]["actions"] = action;
+    assert_eq!(
+        query(&registry).unwrap_err(),
+        "E_TEST_PAIR: script:s requires exactly one of test_script or tests_for"
+    );
+    registry["scripts"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("tests_for");
+    assert_eq!(
+        query(&registry).unwrap_err(),
+        "E_TEST_BINDING: test:t is not a dedicated test of script:st"
+    );
+    registry["scripts"][1]["assertion_helpers"] = json!({"test:st":[]});
+    assert_eq!(
+        query(&registry).unwrap_err(),
+        "assertion_helpers: empty operation list for test:st"
+    );
+    registry["scripts"][1]["assertion_helpers"] = json!({"test:st":["probe","probe",null]});
+    assert_eq!(query(&registry).unwrap_err(), "duplicate ID probe");
+    registry["scripts"][1]["assertion_helpers"] = json!({"test:st":["probe",null]});
+    assert_eq!(query(&registry).unwrap_err(), "expected nonempty string");
+    registry["scripts"][1]["assertion_helpers"] = json!({"test:st":["probe"]});
+    assert_eq!(query(&registry), Ok(Value::Null));
+}
+
+#[test]
 fn git_metadata_cannot_be_registered_as_a_host_file_or_external_input() {
     use chrono_judge_registration::Registrations;
     for (path, accepted) in [
