@@ -18,6 +18,65 @@ use vstd::prelude::*;
 use vstd::vpanic as panic;
 
 verus! {
+#[cfg_attr(not(verus_keep_ghost), test)]
+fn execution_group_requires_a_test_project_and_its_default_identity() {
+    use execution::{explicit_action_key, explicit_groups_allowed, includes_default_group};
+    expect_protocol(explicit_groups_allowed(true, true));
+    expect_protocol(!explicit_groups_allowed(true, false));
+    expect_protocol(!explicit_groups_allowed(false, true));
+    expect_protocol(!includes_default_group(0, false));
+    expect_protocol(!includes_default_group(1, false));
+    expect_protocol(includes_default_group(2, true));
+    expect_protocol(matches!(explicit_action_key(None), Err(())));
+    match explicit_action_key(Some("check")) {
+        Ok(key) => expect_protocol(key == "check"),
+        Err(_) => expect_protocol(false),
+    }
+}
+
+#[cfg_attr(not(verus_keep_ghost), test)]
+fn omitted_groups_only_select_the_existing_eligible_execute_action() {
+    use execution::default_test_action as binds;
+    expect_protocol(binds(true, true, true, false, false, false));
+    expect_protocol(binds(true, true, false, true, false, false));
+    expect_protocol(!binds(true, true, false, false, true, true));
+    expect_protocol(binds(true, false, false, false, true, false));
+    expect_protocol(binds(true, false, false, false, false, true));
+    expect_protocol(!binds(true, false, true, true, false, false));
+    expect_protocol(!binds(false, true, true, true, true, true));
+    expect_protocol(!binds(false, false, true, true, true, true));
+}
+
+#[cfg_attr(not(verus_keep_ghost), test)]
+fn empty_or_repeated_actions_precede_missing_action_and_keep_a_present_value() {
+    use execution::{TestActionError, test_action};
+    proof { reveal_strlit("test"); reveal_strlit("check"); reveal_strlit(""); }
+    let empty = test_action("", "check", true, None::<u8>);
+    let empty_key = test_action("test", "", true, None::<u8>);
+    let repeated = test_action("test", "check", false, None::<u8>);
+    let missing = test_action("test", "check", true, None::<u8>);
+    let value = test_action("test", "check", true, Some(7u8));
+    expect_protocol(matches!(empty, Err(TestActionError::EmptyOrRepeated)));
+    expect_protocol(matches!(empty_key, Err(TestActionError::EmptyOrRepeated)));
+    expect_protocol(matches!(repeated, Err(TestActionError::EmptyOrRepeated)));
+    expect_protocol(matches!(missing, Err(TestActionError::Missing)));
+    expect_protocol(matches!(value, Ok(7)));
+}
+
+#[cfg_attr(not(verus_keep_ghost), test)]
+fn duplicate_explicit_tests_fail_and_repeated_methods_stay_in_order() {
+    use execution::{append_declaration, duplicate_test_identity};
+    expect_protocol(!duplicate_test_identity(false, true, false));
+    expect_protocol(!duplicate_test_identity(true, false, false));
+    expect_protocol(duplicate_test_identity(true, true, false));
+    expect_protocol(duplicate_test_identity(true, false, true));
+    let mut methods = Vec::new();
+    append_declaration(&mut methods, 3u64);
+    append_declaration(&mut methods, 8u64);
+    append_declaration(&mut methods, 3u64);
+    expect_protocol(methods.len() == 3);
+    expect_protocol(methods[0] == 3 && methods[1] == 8 && methods[2] == 3);
+}
 
 #[cfg_attr(not(verus_keep_ghost), test)]
 fn persisted_decimal_starts_after_safe_integers() {

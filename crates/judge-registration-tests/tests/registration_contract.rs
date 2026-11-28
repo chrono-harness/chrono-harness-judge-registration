@@ -993,16 +993,52 @@ fn context_and_config_identity_mismatch() {
     let h = Host::new();
     let mut c = h.context();
     c["candidate"] = h.base.clone().into();
-    let (exit, r) = h.run_context(c);
+    let (exit, r) = h.run_context(c.clone());
     assert_eq!(exit, 2);
     assert!(finding(&r, "E_CONTEXT_MISMATCH"), "{r:#}");
     let p = h.root().join(".chrono-harness/config.json");
     let mut bytes = fs::read(&p).unwrap();
     bytes.push(b' ');
     fs::write(&p, bytes).unwrap();
-    let (exit, r) = h.run();
+    let (exit, r) = h.run_context(c);
     assert_eq!(exit, 2);
     assert!(finding(&r, "E_CONFIG_MISMATCH"), "{r:#}");
+    assert!(!finding(&r, "E_CONTEXT_MISMATCH"), "{r:#}");
+    assert!(r["outputs"].get("registration_view").is_none(), "{r:#}");
+}
+
+#[test]
+fn failed_git_observation_withholds_registration_view() {
+    let h = Host::new();
+    let (exit, passed) = h.run();
+    assert_eq!(exit, 0, "{passed:#}");
+    assert!(
+        passed["outputs"]["registration_view"].is_object(),
+        "{passed:#}"
+    );
+    fs::write(
+        h.root()
+            .join(".chrono-harness/state/mock-observation-error"),
+        b"",
+    )
+    .unwrap();
+    let (exit, rejected) = h.run();
+    assert_eq!(exit, 2, "{rejected:#}");
+    assert!(
+        rejected["findings"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("fixture observation failed"),
+        "{rejected:#}"
+    );
+    assert!(
+        rejected["outputs"].get("registration_view").is_none(),
+        "{rejected:#}"
+    );
+    assert!(
+        rejected["outputs"].get("registration").is_none(),
+        "{rejected:#}"
+    );
 }
 #[test]
 fn strict_five_schemas_duplicate_keys_ids_and_unknown_fields() {

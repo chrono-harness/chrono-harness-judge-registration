@@ -86,6 +86,76 @@ pub fn checkout_is_dirty(observed: &str, candidate: &str, tracked_count: usize, 
 {
     observed != candidate || tracked_count != 0 || nonartifact != 0
 }
+
+pub fn registry_selection_matches(
+    required: bool,
+    base_entry: bool,
+    base_effective: bool,
+    base_selection: bool,
+    candidate_entry: bool,
+    candidate_effective: bool,
+    candidate_selection: bool,
+) -> (accepted: bool)
+    ensures accepted == (!required || (base_entry && base_effective && base_selection
+        && candidate_entry && candidate_effective && candidate_selection)),
+{
+    !required || (base_entry && base_effective && base_selection
+        && candidate_entry && candidate_effective && candidate_selection)
+}
+
+pub fn registry_binding_matches(
+    digest: &str, expected_digest: &str, base_root: bool, candidate_root: bool,
+) -> (accepted: bool)
+    ensures accepted == (digest@ == expected_digest@ && base_root && candidate_root),
+{
+    digest == expected_digest && base_root && candidate_root
+}
+
+pub fn registry_bytes_match(original: &[u8], disk: &[u8]) -> (accepted: bool)
+    ensures accepted == (original@ == disk@),
+{
+    if original.len() != disk.len() {
+        return false;
+    }
+    for i in 0..original.len()
+        invariant
+            original@.len() == disk@.len(),
+            forall|j: int| 0 <= j < i ==> original@[j] == disk@[j],
+    {
+        if original[i] != disk[i] {
+            return false;
+        }
+    }
+    assert(original@ =~= disk@);
+    true
+}
+
+pub(crate) fn context_identity_matches(
+    supported_version: bool, base: Option<&str>, candidate: Option<&str>,
+    dev_tip: Option<&str>, operation: Option<&str>, expected_base: &str, expected_candidate: &str,
+) -> (accepted: bool)
+    ensures accepted == (supported_version
+        && facts::same_text(base, expected_base) && facts::same_text(candidate, expected_candidate)
+        && facts::same_text(dev_tip, expected_base) && facts::same_text(operation, "validate.delta")),
+{
+    supported_version && facts::matches_text(base, expected_base)
+        && facts::matches_text(candidate, expected_candidate)
+        && facts::matches_text(dev_tip, expected_base)
+        && facts::matches_text(operation, "validate.delta")
+}
+
+pub(crate) fn context_mode_matches(v2: bool, run_kind: Option<&str>) -> (accepted: bool)
+    ensures accepted == (!v2 || facts::same_text(run_kind, "integration")
+        || facts::same_text(run_kind, "delivery")),
+{
+    !v2 || facts::matches_text(run_kind, "integration") || facts::matches_text(run_kind, "delivery")
+}
+
+pub fn publishes_registration(passed: bool) -> (publish: bool)
+    ensures publish == passed,
+{
+    passed
+}
 }
 
 /// Validate the explicit projects document without requiring a full-governance host.
@@ -207,13 +277,17 @@ use verified_path_components::outside_artifacts;
 #[cfg(not(verus_keep_ghost))]
 pub fn judge(req: &Request) -> Response {
     let mut r = req.response(Status::Pass);
+    let mut admitted = BTreeMap::new();
     let result = historical_git::InstalledGit::open(req).and_then(|reader| {
-        let result = evaluate(req, &mut r, &reader);
+        let result = evaluate(req, &mut r, &reader, &mut admitted);
         let recorded = reader.record(&mut r);
         result.and(recorded)
     });
     if let Err(e) = result {
         issue(&mut r, "E_INPUT", e, "/request", true);
+    }
+    if publishes_registration(r.status == Status::Pass) {
+        r.outputs.extend(admitted);
     }
     r
 }
@@ -222,6 +296,7 @@ fn evaluate(
     req: &Request,
     r: &mut Response,
     reader: &historical_git::InstalledGit<'_>,
+    admitted: &mut BTreeMap<String, Value>,
 ) -> Result<()> {
     req.validate()?;
     let root = &req.candidate.root;
@@ -269,17 +344,20 @@ fn evaluate(
     let candidate_identity = facts::registry_identity(cv, &req.config_path)?;
     let selector_required =
         base_snapshot.selection.is_some() || candidate_snapshot.selection.is_some();
-    let binding = req.observations["registry_bindings"].clone();
-    if selector_required
-        && (binding["base"]["entry_path"] != base_snapshot.entry_path
-            || binding["base"]["effective_path"] != base_snapshot.effective_path
-            || binding["base"]["selection"]
-                != base_snapshot.selection.clone().unwrap_or(Value::Null)
-            || binding["candidate"]["entry_path"] != candidate_snapshot.entry_path
-            || binding["candidate"]["effective_path"] != candidate_snapshot.effective_path
-            || binding["candidate"]["selection"]
-                != candidate_snapshot.selection.clone().unwrap_or(Value::Null))
-    {
+    let binding = &req.observations["registry_bindings"];
+    if !registry_selection_matches(
+        selector_required,
+        binding["base"]["entry_path"] == base_snapshot.entry_path,
+        binding["base"]["effective_path"] == base_snapshot.effective_path,
+        &binding["base"]["selection"] == base_snapshot.selection.as_ref().unwrap_or(&Value::Null),
+        binding["candidate"]["entry_path"] == candidate_snapshot.entry_path,
+        binding["candidate"]["effective_path"] == candidate_snapshot.effective_path,
+        &binding["candidate"]["selection"]
+            == candidate_snapshot
+                .selection
+                .as_ref()
+                .unwrap_or(&Value::Null),
+    ) {
         issue(
             r,
             "E_IDENTITY",
@@ -294,10 +372,12 @@ fn evaluate(
             .ok_or("missing effective candidate config")?,
     )?;
     let observed = reader.checkout_excluding(root, &req.candidate.commit, &artifact_directories)?;
-    if facts::registry_digest(bv, cv)? != req.registries.digest
-        || req.registries.base != req.base.root.join(".chrono-harness")
-        || req.registries.candidate != root.join(".chrono-harness")
-    {
+    if !registry_binding_matches(
+        &facts::registry_digest(bv, cv)?,
+        &req.registries.digest,
+        req.registries.base == req.base.root.join(".chrono-harness"),
+        req.registries.candidate == root.join(".chrono-harness"),
+    ) {
         issue(
             r,
             "E_IDENTITY",
@@ -309,7 +389,7 @@ fn evaluate(
     }
     for (p, original) in &base_snapshot.bytes {
         let p = checked_path(&req.base.root, p)?;
-        if fs::read(&p).map_err(|e| e.to_string())? != *original {
+        if !registry_bytes_match(original, &fs::read(&p).map_err(|e| e.to_string())?) {
             issue(
                 r,
                 "E_IDENTITY",
@@ -322,7 +402,7 @@ fn evaluate(
     }
     for (p, original) in &candidate_snapshot.bytes {
         let disk = fs::read(checked_path(root, p)?).map_err(|e| e.to_string())?;
-        if &disk != original {
+        if !registry_bytes_match(original, &disk) {
             issue(
                 r,
                 "E_CONFIG_MISMATCH",
@@ -334,7 +414,7 @@ fn evaluate(
         }
     }
     let context = read(&req.context.path)?;
-    if wire::digest(&context)? != req.context.sha256 {
+    if !facts::matches_text(Some(&wire::digest(&context)?), &req.context.sha256) {
         issue(
             r,
             "E_CONTEXT_MISMATCH",
@@ -365,12 +445,15 @@ fn evaluate(
             &["retained_inputs"]
         },
     )?;
-    if (context["schema_version"] != 1 && !context_v2)
-        || context["base"] != req.base.commit
-        || context["candidate"] != req.candidate.commit
-        || context["dev_tip"] != req.base.commit
-        || context["operation"] != "validate.delta"
-    {
+    if !context_identity_matches(
+        context["schema_version"] == 1 || context_v2,
+        context["base"].as_str(),
+        context["candidate"].as_str(),
+        context["dev_tip"].as_str(),
+        context["operation"].as_str(),
+        &req.base.commit,
+        &req.candidate.commit,
+    ) {
         issue(
             r,
             "E_CONTEXT_MISMATCH",
@@ -380,12 +463,7 @@ fn evaluate(
         );
         return Ok(());
     }
-    if context_v2
-        && !matches!(
-            context["run_kind"].as_str(),
-            Some("integration" | "delivery")
-        )
-    {
+    if !context_mode_matches(context_v2, context["run_kind"].as_str()) {
         return Err("context v2 requires integration/delivery run_kind".into());
     }
     schema::string(&context["branch_ref"])?;
@@ -495,7 +573,7 @@ fn evaluate(
     )?;
     if r.status == Status::Pass {
         if let Some(coverage) = new.config["input_closure"].get("coverage") {
-            r.outputs.insert(
+            admitted.insert(
                 "input_coverage".into(),
                 value!({
                     "schema": "chrono-input-coverage-result/v1",
@@ -504,8 +582,8 @@ fn evaluate(
                 }),
             );
         }
-        r.outputs.insert("registration_view".into(), view);
-        r.outputs.insert("registration".into(),value!({"scope":"registration-only","base":req.base.commit,"candidate":req.candidate.commit,"registry_digest":req.registries.digest,"input_closure":"declared-complete","completeness_proven":false,"previous_enforcement":if old.config["status"]=="proposed"{"none"}else{"enabled"}}));
+        admitted.insert("registration_view".into(), view);
+        admitted.insert("registration".into(),value!({"scope":"registration-only","base":req.base.commit,"candidate":req.candidate.commit,"registry_digest":req.registries.digest,"input_closure":"declared-complete","completeness_proven":false,"previous_enforcement":if old.config["status"]=="proposed"{"none"}else{"enabled"}}));
     }
     Ok(())
 }
