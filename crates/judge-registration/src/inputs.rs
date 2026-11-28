@@ -604,6 +604,27 @@ pub fn required_plan_files(
         .collect())
 }
 
+#[cfg(not(verus_keep_ghost))]
+fn unit_assignments(
+    endpoint: &str,
+    old: &Registrations,
+    new: &Registrations,
+    unit: &str,
+) -> Result<
+    (
+        std::collections::BTreeSet<String>,
+        Option<std::collections::BTreeSet<String>>,
+    ),
+    String,
+> {
+    crate::collection::assignments(
+        assigned_plans(new, unit),
+        endpoint == "base",
+        old.config()["execution_units"]["units"].get(unit).is_some(),
+        || assigned_plans(old, unit),
+    )
+}
+
 /// Project routes' selected obligations through the existing explicit unit map.
 /// Retain the old assignments as well as candidate plans that existed at base.
 #[cfg(not(verus_keep_ghost))]
@@ -617,13 +638,10 @@ pub fn collection_required_files(
         .ok_or("collection execution units missing")?;
     let mut plans = std::collections::BTreeSet::new();
     for unit in crate::collection::required(&units["units"], selected)? {
-        plans.extend(assigned_plans(new, &unit)?);
-        if endpoint == "base"
-            && old.config()["execution_units"]["units"]
-                .get(&unit)
-                .is_some()
-        {
-            plans.extend(assigned_plans(old, &unit)?);
+        let (candidate, base) = unit_assignments(endpoint, old, new, &unit)?;
+        plans.extend(candidate);
+        if let Some(base) = base {
+            plans.extend(base);
         }
     }
     let r = if endpoint == "base" { old } else { new };
@@ -651,12 +669,10 @@ pub fn endpoint_required_files(
     // onto the base, retaining also any plans assigned to this ID at the base.
     // Both projections use the same input closure; no global-input fallback.
     let plans = crate::execution::plans(old.filemap())?;
-    let mut selected = assigned_plans(new, unit)?
-        .into_iter()
-        .filter(|test| plans.contains_key(test))
-        .collect::<std::collections::BTreeSet<_>>();
-    if old.config()["execution_units"]["units"].get(unit).is_some() {
-        selected.extend(assigned_plans(old, unit)?);
+    let (mut selected, base) = unit_assignments(endpoint, old, new, unit)?;
+    selected.retain(|test| plans.contains_key(test));
+    if let Some(base) = base {
+        selected.extend(base);
     }
     required_plan_files(old, Some(&selected))
 }

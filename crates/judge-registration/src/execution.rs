@@ -611,6 +611,75 @@ pub fn plan_declarations(input: impl std::io::Read) -> Result<Value, String> {
     Ok(serde_json::json!({"plans":plans, "methods":methods(&query.projects)}))
 }
 
+verus! {
+/// The adapter observes registered resource names and native output path components.
+pub trait ClaimConflicts {
+    spec fn overlap(&self, left: &String, right: &String) -> bool;
+    fn overlaps(&self, left: &String, right: &String) -> (conflict: bool)
+        ensures conflict == self.overlap(left, right);
+}
+
+pub open spec fn affected_claim<P: ClaimConflicts>(
+    op: &String, changed: &String, before: &P, after: &P,
+) -> bool {
+    before.overlap(op, changed) || after.overlap(op, changed)
+}
+
+pub open spec fn affected_operation<P: ClaimConflicts>(
+    op: &String, changed: Seq<&String>, before: &P, after: &P,
+) -> bool {
+    exists|j: int| 0 <= j < changed.len() && affected_claim(op, #[trigger] changed[j], before, after)
+}
+
+fn operation_changed<P: ClaimConflicts>(
+    op: &String, changed: &[&String], before: &P, after: &P,
+) -> (found: bool)
+    ensures found == affected_operation(op, changed@, before, after),
+{
+    for j in 0..changed.len()
+        invariant forall|k: int| 0 <= k < j ==> !affected_claim(op, #[trigger] changed@[k], before, after),
+    {
+        let other = changed[j];
+        if before.overlaps(op, other) || after.overlaps(op, other) {
+            assert(affected_claim(op, changed@[j as int], before, after));
+            return true;
+        }
+    }
+    false
+}
+
+/// Each endpoint's plan can be affected by claims observed at either endpoint.
+pub fn affected_plan<P: ClaimConflicts>(
+    global: bool, direct: bool, operations: &[String], changed: &[&String], before: &P, after: &P,
+) -> (selected: bool)
+    ensures selected == (global || direct || exists|i: int| 0 <= i < operations.len()
+        && affected_operation(&#[trigger] operations@[i], changed@, before, after)),
+{
+    if global || direct { return true; }
+    for i in 0..operations.len()
+        invariant forall|k: int| 0 <= k < i ==>
+            !affected_operation(&#[trigger] operations@[k], changed@, before, after),
+    {
+        if operation_changed(&operations[i], changed, before, after) {
+            assert(affected_operation(&operations@[i as int], changed@, before, after));
+            return true;
+        }
+    }
+    false
+}
+}
+
+#[cfg(not(verus_keep_ghost))]
+impl ClaimConflicts for Option<&Scheduling> {
+    fn overlaps(&self, left: &String, right: &String) -> bool {
+        self.is_some_and(|policy| {
+            policy.claims.contains_key(left)
+                && policy.claims.contains_key(right)
+                && policy.conflicts(left, right)
+        })
+    }
+}
+
 /// Select tests whose admitted scheduling declarations differ across fixed endpoints.
 #[cfg(not(verus_keep_ghost))]
 pub fn scheduling_tests(input: impl std::io::Read) -> Result<BTreeSet<String>, String> {
@@ -621,42 +690,30 @@ pub fn scheduling_tests(input: impl std::io::Read) -> Result<BTreeSet<String>, S
         operations: BTreeMap<String, Vec<String>>,
     }
     let [old, new]: [Endpoint; 2] = serde_json::from_reader(input).map_err(|e| e.to_string())?;
-    let endpoints = [&old, &new];
-    let global = |policy: &Scheduling| {
-        (
-            policy.max_running,
-            policy.resources.clone(),
-            policy.priority.clone(),
-        )
-    };
+    fn global(policy: &Scheduling) -> (usize, &[String], &[String]) {
+        (policy.max_running, &policy.resources, &policy.priority)
+    }
     let all = old.scheduling.as_ref().map(global) != new.scheduling.as_ref().map(global);
-    let policies: Vec<_> = endpoints
-        .iter()
-        .filter_map(|s| s.scheduling.as_ref())
-        .collect();
-    let empty = BTreeMap::new();
-    let before = old.scheduling.as_ref().map(|p| &p.claims).unwrap_or(&empty);
-    let after = new.scheduling.as_ref().map(|p| &p.claims).unwrap_or(&empty);
-    let changed: BTreeSet<_> = before
-        .keys()
-        .chain(after.keys())
-        .filter(|op| before.get(*op) != after.get(*op))
-        .collect();
     let mut selected = BTreeSet::new();
-    for endpoint in endpoints {
-        for (test, operations) in &endpoint.operations {
-            if all
-                || operations.iter().any(|op| {
-                    changed.contains(op)
-                        || policies.iter().any(|policy| {
-                            policy.claims.contains_key(op)
-                                && changed.iter().any(|other| {
-                                    policy.claims.contains_key(*other)
-                                        && policy.conflicts(op, other)
-                                })
-                        })
-                })
-            {
+    let before = old.scheduling.as_ref();
+    let after = new.scheduling.as_ref();
+    let empty = BTreeMap::new();
+    let old_claims = before.map(|p| &p.claims).unwrap_or(&empty);
+    let new_claims = after.map(|p| &p.claims).unwrap_or(&empty);
+    let changed: BTreeSet<_> = if all {
+        BTreeSet::new()
+    } else {
+        old_claims
+            .keys()
+            .chain(new_claims.keys())
+            .filter(|op| old_claims.get(*op) != new_claims.get(*op))
+            .collect()
+    };
+    if all || !changed.is_empty() {
+        let names: Vec<_> = changed.iter().copied().collect();
+        for (test, operations) in old.operations.iter().chain(&new.operations) {
+            let direct = !all && operations.iter().any(|op| changed.contains(op));
+            if affected_plan(all, direct, operations, &names, &before, &after) {
                 selected.insert(test.clone());
             }
         }

@@ -18,6 +18,44 @@ use vstd::prelude::*;
 use vstd::vpanic as panic;
 
 verus! {
+struct OneConflict { plan: String, changed: String }
+impl execution::ClaimConflicts for OneConflict {
+    closed spec fn overlap(&self, left: &String, right: &String) -> bool {
+        self.plan@ == left@ && self.changed@ == right@
+    }
+    fn overlaps(&self, left: &String, right: &String) -> (yes: bool) {
+        self.plan.as_str() == left.as_str() && self.changed.as_str() == right.as_str()
+    }
+}
+
+#[cfg_attr(not(verus_keep_ghost), test)]
+fn conflicts_at_either_endpoint_select_any_operation_and_any_changed_claim() {
+    use execution::affected_plan;
+    proof { reveal_strlit("build"); reveal_strlit("read"); reveal_strlit("left"); reveal_strlit("right"); }
+    let build = "build".to_owned();
+    let read = "read".to_owned();
+    let left = "left".to_owned();
+    let right = "right".to_owned();
+    let operations = vec![build.clone(), read.clone()];
+    let changed = vec![&left, &right];
+    let needed = OneConflict { plan: read.clone(), changed: right.clone() };
+    let unrelated = OneConflict { plan: left.clone(), changed: build.clone() };
+    let old_only = affected_plan(false, false, &operations, &changed, &needed, &unrelated);
+    let new_only = affected_plan(false, false, &operations, &changed, &unrelated, &needed);
+    let neither = affected_plan(false, false, &operations, &changed, &unrelated, &unrelated);
+    assert(execution::affected_claim(&operations@[1], changed@[1], &needed, &unrelated));
+    assert(execution::affected_claim(&operations@[1], changed@[1], &unrelated, &needed));
+    assert forall|i:int| 0 <= i < operations.len() implies
+        !execution::affected_operation(&#[trigger] operations@[i], changed@, &unrelated, &unrelated) by {
+        if i == 0 { assert(operations@[i]@ == build@); } else { assert(operations@[i]@ == read@); }
+    }
+    expect_protocol(old_only && new_only && !neither);
+    let empty: Vec<&String> = Vec::new();
+    expect_protocol(affected_plan(true, false, &operations, &empty, &unrelated, &unrelated));
+    expect_protocol(affected_plan(false, true, &operations, &empty, &unrelated, &unrelated));
+    expect_protocol(!affected_plan(false, false, &operations, &empty, &needed, &needed));
+}
+
 #[cfg_attr(not(verus_keep_ghost), test)]
 fn execution_group_requires_a_test_project_and_its_default_identity() {
     use execution::{explicit_action_key, explicit_groups_allowed, includes_default_group};
