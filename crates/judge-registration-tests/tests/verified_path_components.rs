@@ -15,6 +15,69 @@ use vstd::vpanic as panic;
 mod registration_contract;
 
 verus! {
+#[cfg(verus_keep_ghost)]
+fn project_registry_schema_pairing_and_assertion_helpers() {
+    use registration::schema::{
+        AssertionOperationError, admit_assertion_operation, assertion_helper_owner,
+        assertion_helpers_allowed, assertion_operations_nonempty, project_registry_kind,
+        project_registry_language, project_registry_languages, project_registry_pair,
+        project_registry_required,
+    };
+    use vstd::hash_set::StringHashSet;
+
+    expect(matches!(project_registry_languages(Some(1)), Ok(false)));
+    expect(matches!(project_registry_languages(Some(2)), Ok(true)));
+    expect(project_registry_languages(Some(0)).is_err());
+    expect(project_registry_languages(Some(3)).is_err());
+    expect(project_registry_languages(None).is_err());
+    let legacy_project = project_registry_required(true, false);
+    let current_script = project_registry_required(false, true);
+    expect(legacy_project.len() == 3 && legacy_project[1] == "kind");
+    expect(current_script.len() == 4 && current_script[1] == "path" && current_script[3] == "language");
+    proof {
+        reveal_strlit("production"); reveal_strlit("test"); reveal_strlit("other");
+        reveal_strlit(""); reveal_strlit("rust"); reveal_strlit("probe");
+    }
+    expect(matches!(project_registry_kind("production"), Ok(true)));
+    expect(matches!(project_registry_kind("test"), Ok(false)));
+    expect(project_registry_kind("other").is_err());
+    expect(project_registry_language(false, None));
+    expect(!project_registry_language(true, None));
+    expect(!project_registry_language(true, Some("")));
+    expect(project_registry_language(true, Some("rust")));
+
+    let forward = project_registry_pair(Some(true), true, false).unwrap();
+    let reverse = project_registry_pair(Some(false), false, true).unwrap();
+    expect(forward == "test_project" && reverse == "tests_for");
+    let wrong_project_field = project_registry_pair(Some(true), false, true).unwrap();
+    expect(wrong_project_field == "test_project");
+    let script = project_registry_pair(None, true, false).unwrap();
+    let test_script = project_registry_pair(None, false, true).unwrap();
+    expect(script == "test_script" && test_script == "tests_for");
+    expect(project_registry_pair(Some(true), true, true).is_err());
+    expect(project_registry_pair(Some(false), false, false).is_err());
+    expect(project_registry_pair(None, false, false).is_err());
+    expect(project_registry_pair(None, true, true).is_err());
+
+    expect(!assertion_helpers_allowed(false, true));
+    expect(!assertion_helpers_allowed(true, false));
+    expect(assertion_helpers_allowed(true, true));
+    expect(!assertion_helper_owner(0, None, "test"));
+    expect(!assertion_helper_owner(1, Some("other"), "test"));
+    expect(!assertion_helper_owner(2, Some("test"), "test"));
+    expect(assertion_helper_owner(1, Some("test"), "test"));
+    expect(!assertion_operations_nonempty(0));
+    expect(assertion_operations_nonempty(1));
+
+    let mut seen = StringHashSet::new();
+    expect(matches!(admit_assertion_operation(None, &mut seen), Err(AssertionOperationError::ExpectedName)));
+    expect(matches!(admit_assertion_operation(Some(""), &mut seen), Err(AssertionOperationError::ExpectedName)));
+    expect(admit_assertion_operation(Some("probe"), &mut seen).is_ok());
+    let repeated = admit_assertion_operation(Some("probe"), &mut seen);
+    expect(matches!(repeated, Err(AssertionOperationError::Duplicate(name)) if name == "probe"));
+    expect(admit_assertion_operation(Some("other"), &mut seen).is_ok());
+}
+
 #[cfg_attr(not(verus_keep_ghost), test)]
 fn registration_reports_the_most_severe_finding_and_its_protocol_exit() {
     use registration::wire::Status::{Error, Fail, Pass, Warn};
