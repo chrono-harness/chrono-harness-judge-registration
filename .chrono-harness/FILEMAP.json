@@ -107,7 +107,11 @@
           "kind": "test-execution",
           "to": "test:judge-registration-tests"
         }
-      ]
+      ],
+      "verification": {
+        "role": "data",
+        "roots": []
+      }
     },
     {
       "path": ".chrono-harness/judges.json",
@@ -389,7 +393,11 @@
       "owner": "host",
       "surface": "product",
       "cost": "unmeasured",
-      "edges": []
+      "edges": [],
+      "verification": {
+        "role": "data",
+        "roots": []
+      }
     },
     {
       "path": ".github/workflows/actions.lock",
