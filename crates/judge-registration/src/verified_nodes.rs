@@ -20,6 +20,20 @@ pub enum NodeKind {
     Environment,
 }
 
+impl NodeKind {
+    pub fn input_consumer(&self) -> (allowed: bool)
+        ensures allowed == matches!(self, Self::Project | Self::Script | Self::Test | Self::Judge),
+    {
+        matches!(self, Self::Project | Self::Script | Self::Test | Self::Judge)
+    }
+
+    pub fn external_input(&self) -> (allowed: bool)
+        ensures allowed == matches!(self, Self::Tool | Self::Input | Self::Environment),
+    {
+        matches!(self, Self::Tool | Self::Input | Self::Environment)
+    }
+}
+
 impl Clone for NodeKind {
     fn clone(&self) -> (out: Self)
         ensures out == *self,

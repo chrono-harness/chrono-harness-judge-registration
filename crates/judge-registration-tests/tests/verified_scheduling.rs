@@ -18,6 +18,38 @@ use vstd::prelude::*;
 use vstd::vpanic as panic;
 
 verus! {
+struct OnePrefix;
+impl execution::OutputPaths for OnePrefix {
+    closed spec fn prefix(&self, path: &String, ancestor: &String) -> bool {
+        path@ == "out/file"@ && ancestor@ == "out"@
+    }
+    fn starts_with(&self, path: &String, ancestor: &String) -> (yes: bool) {
+        path.as_str() == "out/file" && ancestor.as_str() == "out"
+    }
+}
+
+#[cfg_attr(not(verus_keep_ghost), test)]
+fn scheduling_resources_and_nested_outputs_use_distinct_overlap_rules() {
+    use execution::{ClaimKind, OutputPaths, claims_conflict, conflicting_names, conflicting_row};
+    proof { reveal_strlit("cpu"); reveal_strlit("gpu"); reveal_strlit("out"); reveal_strlit("out/file"); }
+    let none: Vec<String> = Vec::new();
+    let resources = vec!["cpu".to_owned(), "gpu".to_owned()];
+    let cpu = vec!["cpu".to_owned()];
+    let ancestor = vec!["out".to_owned()];
+    let child = vec!["gpu".to_owned(), "out/file".to_owned()];
+    let equal = claims_conflict(&resources, &cpu, &none, &none, &OnePrefix);
+    let down = claims_conflict(&none, &none, &ancestor, &child, &OnePrefix);
+    let up = claims_conflict(&none, &none, &child, &ancestor, &OnePrefix);
+    let separate = claims_conflict(&ancestor, &child, &none, &none, &OnePrefix);
+    assert(conflicting_names(ClaimKind::Resource, &resources@[0], &cpu@[0], &OnePrefix));
+    assert(conflicting_names(ClaimKind::Output, &ancestor@[0], &child@[1], &OnePrefix));
+    assert(conflicting_names(ClaimKind::Output, &child@[1], &ancestor@[0], &OnePrefix));
+    assert(conflicting_row(ClaimKind::Resource, &resources@[0], cpu@, &OnePrefix));
+    assert(conflicting_row(ClaimKind::Output, &ancestor@[0], child@, &OnePrefix));
+    assert(conflicting_row(ClaimKind::Output, &child@[1], ancestor@, &OnePrefix));
+    expect_protocol(equal && down && up && !separate);
+}
+
 struct OneConflict { plan: String, changed: String }
 impl execution::ClaimConflicts for OneConflict {
     closed spec fn overlap(&self, left: &String, right: &String) -> bool {

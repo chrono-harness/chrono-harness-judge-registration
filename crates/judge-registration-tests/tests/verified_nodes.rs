@@ -11,6 +11,18 @@ use vstd::prelude::verus;
 use vstd::prelude::*;
 
 verus! {
+#[cfg_attr(not(verus_keep_ghost), test)]
+fn closure_roles_cover_exactly_executable_and_external_inventory_kinds() {
+    assert(NodeKind::Project.input_consumer()); assert(NodeKind::Script.input_consumer());
+    assert(NodeKind::Test.input_consumer()); assert(NodeKind::Judge.input_consumer());
+    assert(!NodeKind::File.input_consumer()); assert(!NodeKind::Input.input_consumer());
+    assert(!NodeKind::Tool.input_consumer()); assert(!NodeKind::Environment.input_consumer());
+    assert(NodeKind::Input.external_input()); assert(NodeKind::Tool.external_input());
+    assert(NodeKind::Environment.external_input()); assert(!NodeKind::File.external_input());
+    assert(!NodeKind::Project.external_input()); assert(!NodeKind::Script.external_input());
+    assert(!NodeKind::Test.external_input()); assert(!NodeKind::Judge.external_input());
+}
+
 
 #[cfg_attr(not(verus_keep_ghost), test)]
 fn node_variants_retain_identity_and_are_distinct() {
