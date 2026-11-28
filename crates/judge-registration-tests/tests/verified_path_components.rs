@@ -30,7 +30,7 @@ fn full_registry_checks_each_declared_selection_field() {
 
 #[cfg_attr(not(verus_keep_ghost), test)]
 fn full_registry_requires_both_roots_digest_and_exact_disk_bytes() {
-    use registration::{publishes_registration, registry_binding_matches, registry_bytes_match};
+    use registration::{admitted_registration, registry_binding_matches, registry_bytes_match};
     proof { reveal_strlit("expected"); reveal_strlit("different"); }
     expect(registry_binding_matches("expected", "expected", true, true));
     expect(!registry_binding_matches("different", "expected", true, true));
@@ -42,8 +42,9 @@ fn full_registry_requires_both_roots_digest_and_exact_disk_bytes() {
     expect(registry_bytes_match(original, original));
     expect(!registry_bytes_match(original, changed_byte));
     expect(!registry_bytes_match(original, removed_byte));
-    expect(publishes_registration(true));
-    expect(!publishes_registration(false));
+    expect(matches!(admitted_registration(true, true, 7u8), Some(7)));
+    expect(admitted_registration(false, true, 7u8).is_none());
+    expect(admitted_registration(true, false, 7u8).is_none());
 }
 
 #[cfg(verus_keep_ghost)]

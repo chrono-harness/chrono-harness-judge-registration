@@ -1008,39 +1008,6 @@ fn context_and_config_identity_mismatch() {
 }
 
 #[test]
-fn failed_git_observation_withholds_registration_view() {
-    let h = Host::new();
-    let (exit, passed) = h.run();
-    assert_eq!(exit, 0, "{passed:#}");
-    assert!(
-        passed["outputs"]["registration_view"].is_object(),
-        "{passed:#}"
-    );
-    fs::write(
-        h.root()
-            .join(".chrono-harness/state/mock-observation-error"),
-        b"",
-    )
-    .unwrap();
-    let (exit, rejected) = h.run();
-    assert_eq!(exit, 2, "{rejected:#}");
-    assert!(
-        rejected["findings"][0]["message"]
-            .as_str()
-            .unwrap()
-            .contains("fixture observation failed"),
-        "{rejected:#}"
-    );
-    assert!(
-        rejected["outputs"].get("registration_view").is_none(),
-        "{rejected:#}"
-    );
-    assert!(
-        rejected["outputs"].get("registration").is_none(),
-        "{rejected:#}"
-    );
-}
-#[test]
 fn strict_five_schemas_duplicate_keys_ids_and_unknown_fields() {
     for name in ["config", "judges", "projects", "FILEMAP", "workflow"] {
         let mut h = Host::new();

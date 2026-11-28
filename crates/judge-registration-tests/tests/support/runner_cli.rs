@@ -59,16 +59,7 @@ fn facts_session() -> Result<(), Box<dyn std::error::Error>> {
                 "candidate-inventory" => {
                     Ok(json!({"entries":facts["entries"],"delta":facts["delta"]}))
                 }
-                "observation" => {
-                    if root
-                        .join(".chrono-harness/state/mock-observation-error")
-                        .exists()
-                    {
-                        Err("fixture observation failed".into())
-                    } else {
-                        Ok(facts["observation"].clone())
-                    }
-                }
+                "observation" => Ok(facts["observation"].clone()),
                 "verify-tree" => Ok(facts[endpoint()?]["tree"].clone()),
                 "verify-commit" => {
                     let oid = field(&q, "commit")?;

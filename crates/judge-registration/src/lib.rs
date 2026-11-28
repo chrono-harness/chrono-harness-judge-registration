@@ -151,10 +151,11 @@ pub(crate) fn context_mode_matches(v2: bool, run_kind: Option<&str>) -> (accepte
     !v2 || facts::matches_text(run_kind, "integration") || facts::matches_text(run_kind, "delivery")
 }
 
-pub fn publishes_registration(passed: bool) -> (publish: bool)
-    ensures publish == passed,
+pub fn admitted_registration<T>(passed: bool, completed: bool, output: T)
+    -> (admitted: Option<T>)
+    ensures admitted == if passed && completed { Some(output) } else { None },
 {
-    passed
+    if passed && completed { Some(output) } else { None }
 }
 }
 
@@ -283,10 +284,11 @@ pub fn judge(req: &Request) -> Response {
         let recorded = reader.record(&mut r);
         result.and(recorded)
     });
+    let admitted = admitted_registration(r.status == Status::Pass, result.is_ok(), admitted);
     if let Err(e) = result {
         issue(&mut r, "E_INPUT", e, "/request", true);
     }
-    if publishes_registration(r.status == Status::Pass) {
+    if let Some(admitted) = admitted {
         r.outputs.extend(admitted);
     }
     r
