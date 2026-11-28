@@ -18,6 +18,11 @@ use vstd::prelude::*;
 use vstd::vpanic as panic;
 
 verus! {
+
+/// The deployed check is an input of this proof and its native consumer.
+pub fn native_check_script() -> &'static str {
+    include_str!("../../../check.sh")
+}
 struct OneConflict { plan: String, changed: String }
 impl execution::ClaimConflicts for OneConflict {
     closed spec fn overlap(&self, left: &String, right: &String) -> bool {
@@ -251,4 +256,15 @@ fn persisted_decimal_timeouts_match_original_numeric_plan_declarations() {
         persisted["timeout_seconds"] = json!(invalid);
         assert!(read(json!({"test:ok":persisted})).is_err());
     }
+}
+
+#[cfg(not(verus_keep_ghost))]
+#[test]
+fn native_check_matches_the_compiled_host_input() {
+    let deployed = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../check.sh");
+    assert_eq!(
+        std::fs::read(&deployed)
+            .unwrap_or_else(|error| panic!("cannot read {}: {error}", deployed.display())),
+        native_check_script().as_bytes()
+    );
 }
