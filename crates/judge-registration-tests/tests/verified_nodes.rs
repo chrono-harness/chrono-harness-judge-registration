@@ -13,6 +13,7 @@ use vstd::prelude::*;
 verus! {
 #[cfg_attr(not(verus_keep_ghost), test)]
 fn closure_roles_cover_exactly_executable_and_external_inventory_kinds() {
+    use policy::NodeKind;
     assert(NodeKind::Project.input_consumer()); assert(NodeKind::Script.input_consumer());
     assert(NodeKind::Test.input_consumer()); assert(NodeKind::Judge.input_consumer());
     assert(!NodeKind::File.input_consumer()); assert(!NodeKind::Input.input_consumer());
