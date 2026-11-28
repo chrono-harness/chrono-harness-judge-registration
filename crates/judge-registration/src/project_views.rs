@@ -152,7 +152,7 @@ pub fn evidence(root: &Path, input: impl Read) -> Result<Value, String> {
                 candidate,
             );
             let closed = reader.finish();
-            super::historical_git::complete_read(result, closed, |receipt| receipt).0?;
+            super::historical_git::complete_read(result, closed, |_| None::<()>).0?;
             inputs::project_effective(&effective_inputs, &old, &current, request.scope.as_ref())?
         }
     };

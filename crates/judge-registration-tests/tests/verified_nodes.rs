@@ -10,18 +10,22 @@ use vstd::prelude::verus;
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
 
+#[cfg(verus_keep_ghost)]
+use vstd::vpanic as panic;
+
 verus! {
+fn expect_role(ok: bool) requires ok { if !ok { panic!(); } }
 #[cfg_attr(not(verus_keep_ghost), test)]
 fn closure_roles_cover_exactly_executable_and_external_inventory_kinds() {
     use policy::NodeKind;
-    assert(NodeKind::Project.input_consumer()); assert(NodeKind::Script.input_consumer());
-    assert(NodeKind::Test.input_consumer()); assert(NodeKind::Judge.input_consumer());
-    assert(!NodeKind::File.input_consumer()); assert(!NodeKind::Input.input_consumer());
-    assert(!NodeKind::Tool.input_consumer()); assert(!NodeKind::Environment.input_consumer());
-    assert(NodeKind::Input.external_input()); assert(NodeKind::Tool.external_input());
-    assert(NodeKind::Environment.external_input()); assert(!NodeKind::File.external_input());
-    assert(!NodeKind::Project.external_input()); assert(!NodeKind::Script.external_input());
-    assert(!NodeKind::Test.external_input()); assert(!NodeKind::Judge.external_input());
+    expect_role(NodeKind::Project.input_consumer()); expect_role(NodeKind::Script.input_consumer());
+    expect_role(NodeKind::Test.input_consumer()); expect_role(NodeKind::Judge.input_consumer());
+    expect_role(!NodeKind::File.input_consumer()); expect_role(!NodeKind::Input.input_consumer());
+    expect_role(!NodeKind::Tool.input_consumer()); expect_role(!NodeKind::Environment.input_consumer());
+    expect_role(NodeKind::Input.external_input()); expect_role(NodeKind::Tool.external_input());
+    expect_role(NodeKind::Environment.external_input()); expect_role(!NodeKind::File.external_input());
+    expect_role(!NodeKind::Project.external_input()); expect_role(!NodeKind::Script.external_input());
+    expect_role(!NodeKind::Test.external_input()); expect_role(!NodeKind::Judge.external_input());
 }
 
 
