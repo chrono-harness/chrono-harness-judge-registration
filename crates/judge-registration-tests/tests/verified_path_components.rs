@@ -16,6 +16,17 @@ mod registration_contract;
 
 verus! {
 #[cfg_attr(not(verus_keep_ghost), test)]
+fn registration_reports_the_most_severe_finding_and_its_protocol_exit() {
+    use registration::wire::Status::{Error, Fail, Pass, Warn};
+    expect(matches!(Pass.with_finding(Fail), Fail));
+    expect(matches!(Fail.with_finding(Error), Error));
+    expect(matches!(Error.with_finding(Fail), Error));
+    expect(matches!(Warn.with_finding(Pass), Warn));
+    expect(Pass.exit_code() == 0 && Warn.exit_code() == 0);
+    expect(Fail.exit_code() == 1 && Error.exit_code() == 2);
+}
+
+#[cfg_attr(not(verus_keep_ghost), test)]
 fn transition_reader_and_full_planning_preserve_bound_reader_and_retirement_order() {
     use registration::ci_transition::{TransitionReader, transition_reader, full_planning};
     expect(matches!(transition_reader(Some(4u8), false), TransitionReader::Observed(4)));
