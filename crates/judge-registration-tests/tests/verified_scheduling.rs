@@ -30,7 +30,9 @@ impl execution::OutputPaths for OnePrefix {
 
 #[cfg_attr(not(verus_keep_ghost), test)]
 fn scheduling_resources_and_nested_outputs_use_distinct_overlap_rules() {
-    use execution::{ClaimKind, OutputPaths, claims_conflict, conflicting_names, conflicting_row};
+    use execution::claims_conflict;
+    #[cfg(verus_keep_ghost)]
+    use execution::{ClaimKind, conflicting_names, conflicting_row};
     proof { reveal_strlit("cpu"); reveal_strlit("gpu"); reveal_strlit("out"); reveal_strlit("out/file"); }
     let none: Vec<String> = Vec::new();
     let resources = vec!["cpu".to_owned(), "gpu".to_owned()];

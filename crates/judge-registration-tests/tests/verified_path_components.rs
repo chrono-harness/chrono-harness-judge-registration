@@ -15,6 +15,27 @@ use vstd::vpanic as panic;
 mod registration_contract;
 
 verus! {
+#[cfg_attr(not(verus_keep_ghost), test)]
+fn transition_reader_and_full_planning_preserve_bound_reader_and_retirement_order() {
+    use registration::ci_transition::{TransitionReader, transition_reader, full_planning};
+    expect(matches!(transition_reader(Some(4u8), false), TransitionReader::Observed(4)));
+    expect(matches!(transition_reader(Some(9u8), true), TransitionReader::Observed(9)));
+    expect(matches!(transition_reader(None::<u8>, true), TransitionReader::Configured));
+    expect(matches!(transition_reader(None::<u8>, false), TransitionReader::History));
+    expect(matches!(full_planning(true, 0), Ok(true)));
+    expect(matches!(full_planning(true, 1), Err(_)));
+    expect(matches!(full_planning(false, 1), Ok(false)));
+}
+
+#[cfg_attr(not(verus_keep_ghost), test)]
+fn workflow_removed_owner_and_optional_replacement_use_candidate_declarations() {
+    use registration::workflow_views::{retired_owner, replacement_exists};
+    expect(retired_owner(false, false)); expect(!retired_owner(true, false));
+    expect(!retired_owner(false, true)); expect(!retired_owner(true, true));
+    expect(replacement_exists(false, false).is_ok()); expect(replacement_exists(true, true).is_ok());
+    expect(replacement_exists(true, false).is_err());
+}
+
 struct ConfigToken { id: u8 }
 impl registration::ConfigurationEntry for ConfigToken {
     closed spec fn named(&self, config: &str) -> bool { self.id == 1 && config@ == "active"@ }
