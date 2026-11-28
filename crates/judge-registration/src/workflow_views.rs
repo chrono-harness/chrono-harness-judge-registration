@@ -5,6 +5,19 @@ use vstd::prelude::verus;
 use vstd::prelude::*;
 
 verus! {
+pub fn retired_owner(test_owner: bool, still_declared: bool) -> (removed: bool)
+    ensures removed == (!test_owner && !still_declared),
+{ !test_owner && !still_declared }
+
+pub fn replacement_exists(declared: bool, found: bool) -> (out: Result<(), &'static str>)
+    ensures if declared && !found {
+        out matches Err(message) && message@ == "E_RETIREMENT: replacement identity missing"@
+    } else { out == Ok::<(), &str>(()) },
+{
+    if declared && !found { Err("E_RETIREMENT: replacement identity missing") } else { Ok(()) }
+}
+
+
 pub(crate) enum TestChange { Other, Present, Removed }
 
 /// Only baseline test nodes can be ambiguous or removed; candidate membership decides removal.
@@ -107,19 +120,20 @@ fn tested_changes(old: &Registrations, current: &Registrations) -> Value {
         };
         let rows = rows.as_array().unwrap();
         for row in old_rows {
-            if row.get("tests_for").is_some() {
-                continue;
-            }
             let id = row["id"].as_str().unwrap();
-            if rows.iter().any(|r| r["id"] == id) {
+            if !retired_owner(
+                row.get("tests_for").is_some(),
+                rows.iter().any(|r| r["id"] == id),
+            ) {
                 continue;
             }
             let replacement =
                 transition::retirement_declaration(current, kind, id).and_then(|decl| {
                     let replacement = decl["replacement"].as_str();
-                    if replacement.is_some_and(|name| !rows.iter().any(|r| r["id"] == name)) {
-                        return Err("E_RETIREMENT: replacement identity missing".into());
-                    }
+                    replacement_exists(
+                        replacement.is_some(),
+                        replacement.is_some_and(|name| rows.iter().any(|r| r["id"] == name)),
+                    )?;
                     Ok(replacement)
                 });
             removed_owners.push(json!({"kind":kind,"id":id,"replacement":replacement}));

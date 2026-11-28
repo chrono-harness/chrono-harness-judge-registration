@@ -5,6 +5,30 @@ use vstd::prelude::verus;
 use vstd::prelude::*;
 
 verus! {
+pub enum TransitionReader<T> { Observed(T), History, Configured }
+
+pub fn transition_reader<T>(binding: Option<T>, execute: bool) -> (chosen: TransitionReader<T>)
+    ensures chosen == match binding {
+        Some(original) => TransitionReader::Observed(original),
+        None if execute => TransitionReader::Configured,
+        None => TransitionReader::History,
+    },
+{
+    match binding {
+        Some(original) => TransitionReader::Observed(original),
+        None if execute => TransitionReader::Configured,
+        None => TransitionReader::History,
+    }
+}
+
+pub fn full_planning(full: bool, retired: usize) -> (out: Result<bool, &'static str>)
+    ensures if full && retired > 0 {
+        out matches Err(message) && message@ == "full scheduling determines retirements after registration"@
+    } else { out == Ok::<bool, &str>(full) },
+{
+    if full && retired > 0 { Err("full scheduling determines retirements after registration") }
+    else { Ok(full) }
+}
 /// CI exposes a completed Git observation only when the originating request supplied a binding.
 pub(crate) fn complete_transition<T, O, E>(
     action: Result<T, E>, closed: Result<Option<O>, E>, requested: bool,
@@ -121,13 +145,14 @@ pub fn query(root: &Path, input: impl Read) -> Result<Value, String> {
     facts::full_oid(&base)?;
     facts::full_oid(&candidate)?;
     let installed = std::cell::OnceCell::new();
+    let reader_mode = transition_reader(git.as_ref(), matches!(mode, Mode::Execute { .. }));
     let get_reader = || {
-        installed.get_or_init(|| match &git {
-            Some(binding) => InstalledGit::observed(root, Some(&base), &candidate, &binding.config,
+        installed.get_or_init(|| match &reader_mode {
+            TransitionReader::Observed(binding) => InstalledGit::observed(root, Some(&base), &candidate, &binding.config,
                 &json!({"git_facts":binding.git_facts,"environment":binding.git_facts["environment"]})),
-            None if matches!(mode, Mode::Schedule | Mode::FullSchedule) =>
+            TransitionReader::History =>
                 InstalledGit::history(root,&base,&candidate),
-            None => {
+            TransitionReader::Configured => {
                 let reader = InstalledGit::configured(root, &base, &candidate, &config)?;
                 reader.query::<()>(json!({"op":"verify-config","candidate":candidate}))?;
                 Ok(reader)
@@ -140,7 +165,7 @@ pub fn query(root: &Path, input: impl Read) -> Result<Value, String> {
             Mode::Execute { environment } => Some(environment),
         };
         // A legacy execution has no caller-bound reader to check its configuration.
-        if git.is_none() && environment.is_some() {
+        if matches!(reader_mode, TransitionReader::Configured) {
             get_reader()?;
         }
         let (old, new, view) = transition::interpret_ci_documents(
@@ -153,10 +178,7 @@ pub fn query(root: &Path, input: impl Read) -> Result<Value, String> {
             new,
             environment,
         )?;
-        if matches!(mode, Mode::FullSchedule) {
-            if !retired.is_empty() {
-                return Err("full scheduling determines retirements after registration".into());
-            }
+        if full_planning(matches!(mode, Mode::FullSchedule), retired.len())? {
             return Ok(planning(&old, &new));
         }
         Ok(

@@ -87,6 +87,66 @@ pub fn checkout_is_dirty(observed: &str, candidate: &str, tracked_count: usize, 
     observed != candidate || tracked_count != 0 || nonartifact != 0
 }
 
+/// JSON supplies row identities and structural edge equality at the adapter boundary.
+pub trait ConfigurationEntry {
+    spec fn named(&self, config: &str) -> bool;
+    fn matches_config(&self, config: &str) -> (yes: bool) ensures yes == self.named(config);
+    spec fn same(&self, other: &Self) -> bool;
+    fn same_edge(&self, other: &Self) -> (yes: bool) ensures yes == self.same(other);
+}
+
+pub fn active_configuration<T: ConfigurationEntry>(rows: &[T], config: &str) -> (found: Option<usize>)
+    ensures match found {
+        Some(i) => i < rows.len() && rows@[i as int].named(config)
+            && forall|j: int| 0 <= j < i ==> !#[trigger] rows@[j].named(config),
+        None => forall|j: int| 0 <= j < rows.len() ==> !#[trigger] rows@[j].named(config),
+    },
+{
+    for i in 0..rows.len()
+        invariant forall|j: int| 0 <= j < i ==> !#[trigger] rows@[j].named(config),
+    {
+        if rows[i].matches_config(config) { return Some(i); }
+    }
+    None
+}
+
+fn contains_edge<T: ConfigurationEntry>(prior: &[T], edge: &T) -> (present: bool)
+    ensures present == (exists|i: int| 0 <= i < prior.len() && #[trigger] prior@[i].same(edge)),
+{
+    for i in 0..prior.len()
+        invariant forall|j: int| 0 <= j < i ==> !#[trigger] prior@[j].same(edge),
+    {
+        if prior[i].same_edge(edge) { return true; }
+    }
+    false
+}
+
+pub open spec fn edge_is_new<T: ConfigurationEntry>(shared: Seq<T>, active: Seq<T>, i: int) -> bool {
+    &&& forall|j: int| 0 <= j < shared.len() ==> !#[trigger] shared[j].same(&active[i])
+    &&& forall|j: int| 0 <= j < i ==> !#[trigger] active[j].same(&active[i])
+}
+
+pub fn unique_active_edges<T: ConfigurationEntry>(shared: &[T], active: &[T]) -> (ok: bool)
+    ensures ok == (forall|i: int| 0 <= i < active.len() ==> #[trigger] edge_is_new(shared@, active@, i)),
+{
+    for i in 0..active.len()
+        invariant forall|j: int| 0 <= j < i ==> #[trigger] edge_is_new(shared@, active@, j),
+    {
+        let edge = &active[i];
+        let (prior, _) = active.split_at(i);
+        if contains_edge(shared, edge) || contains_edge(prior, edge) {
+            assert(!edge_is_new(shared@, active@, i as int));
+            return false;
+        }
+        assert forall|j: int| 0 <= j < i implies !#[trigger] active@[j].same(&active@[i as int]) by {
+            assert(prior@[j] == active@[j]);
+            assert(!prior@[j].same(edge));
+        }
+        assert(edge_is_new(shared@, active@, i as int));
+    }
+    true
+}
+
 pub fn registry_selection_matches(
     required: bool,
     base_entry: bool,
@@ -185,6 +245,16 @@ pub fn select_filemap(filemap: &Value, config: Option<&str>) -> std::result::Res
 }
 
 #[cfg(not(verus_keep_ghost))]
+impl ConfigurationEntry for Value {
+    fn matches_config(&self, config: &str) -> bool {
+        self["config"] == config
+    }
+    fn same_edge(&self, other: &Self) -> bool {
+        self == other
+    }
+}
+
+#[cfg(not(verus_keep_ghost))]
 fn configuration_edges<'a>(filemap: &'a Value, config: Option<&str>) -> Result<&'a [Value]> {
     let Some(table) = filemap.get("configuration_edges") else {
         return Ok(&[]);
@@ -193,18 +263,15 @@ fn configuration_edges<'a>(filemap: &'a Value, config: Option<&str>) -> Result<&
     let config =
         config.ok_or("configuration edges require an effective registration configuration")?;
     let shared = filemap["project_edges"].as_array().unwrap();
-    for row in table["configurations"].as_array().unwrap() {
-        if row["config"] == config {
-            let edges = row["edges"].as_array().unwrap();
-            for (index, edge) in edges.iter().enumerate() {
-                if shared.contains(edge) || edges[..index].contains(edge) {
-                    return Err("duplicate active configuration edge".into());
-                }
-            }
-            return Ok(edges);
-        }
+    let rows = table["configurations"].as_array().unwrap();
+    let Some(index) = active_configuration(rows, config) else {
+        return Ok(&[]);
+    };
+    let edges = rows[index]["edges"].as_array().unwrap();
+    if !unique_active_edges(shared, edges) {
+        return Err("duplicate active configuration edge".into());
     }
-    Ok(&[])
+    Ok(edges)
 }
 
 #[cfg(not(verus_keep_ghost))]
@@ -746,7 +813,7 @@ pub(crate) fn input_closure_findings(n: &Registrations) -> Vec<Finding> {
         let consumer = binding["consumer"].as_str().unwrap_or_default();
         let consumer_reference = format!("/config/input_closure/bindings/{binding_index}/consumer");
         match nodes.get(consumer).map(|view| view.kind) {
-            Some(NodeKind::Project | NodeKind::Script | NodeKind::Test | NodeKind::Judge) => {}
+            Some(kind) if kind.input_consumer() => {}
             Some(_) => issue(
                 "E_REFERENCE",
                 format!("input closure consumer is not an executable node: {consumer}"),
@@ -769,7 +836,7 @@ pub(crate) fn input_closure_findings(n: &Registrations) -> Vec<Finding> {
                 format!("/config/input_closure/bindings/{binding_index}/inputs/{input_index}");
             bound_inputs.insert(input.to_owned());
             match nodes.get(input).map(|view| view.kind) {
-                Some(NodeKind::Tool | NodeKind::Input | NodeKind::Environment) => {}
+                Some(kind) if kind.external_input() => {}
                 Some(_) => issue(
                     "E_REFERENCE",
                     format!("input closure reference is not an external input node: {input}"),
@@ -796,10 +863,7 @@ pub(crate) fn input_closure_findings(n: &Registrations) -> Vec<Finding> {
         && n.config["input_closure"]["status"] == "declared-complete"
     {
         for (identity, view) in &nodes {
-            if !matches!(
-                view.kind,
-                NodeKind::Tool | NodeKind::Input | NodeKind::Environment
-            ) {
+            if !view.kind.external_input() {
                 continue;
             }
             if !bound_inputs.contains(identity) {

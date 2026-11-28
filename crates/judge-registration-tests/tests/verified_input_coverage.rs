@@ -7,7 +7,49 @@ use vstd::prelude::verus;
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
 
+#[cfg(verus_keep_ghost)]
+use vstd::vpanic as panic;
+
 verus! {
+
+fn expect(ok: bool) requires ok { if !ok { panic!(); } }
+
+#[cfg_attr(not(verus_keep_ghost), test)]
+fn reverse_input_edges_compute_the_least_closed_set_with_cycles_and_multiple_seeds() {
+    use vstd::hash_set::StringHashSet;
+    let test = "test".to_owned(); let owner = "owner".to_owned();
+    let tool = "tool".to_owned(); let input = "input".to_owned(); let extra = "extra".to_owned();
+    let other = "other".to_owned();
+    proof {
+        reveal_strlit("test"); reveal_strlit("owner"); reveal_strlit("tool");
+        reveal_strlit("input"); reveal_strlit("extra"); reveal_strlit("other");
+    }
+    let edges = vec![(input.clone(), tool.clone()), (tool.clone(), owner.clone()),
+        (owner.clone(), test.clone()), (owner.clone(), tool.clone()), (other.clone(), other.clone())];
+    let mut seeds = StringHashSet::new(); seeds.insert(test.clone()); seeds.insert(extra.clone());
+    let reached = policy::input_closure(&edges, seeds);
+    assert(reached@.contains(test@));
+    assert(reached@.contains(edges@[2].1@)); assert(reached@.contains(owner@));
+    assert(reached@.contains(edges@[1].1@)); assert(reached@.contains(tool@));
+    assert(reached@.contains(edges@[0].1@)); assert(reached@.contains(input@));
+    let ghost expected = vstd::set![test@, owner@, tool@, input@, extra@];
+    assert forall|i: int| 0 <= i < edges.len() && expected.contains(#[trigger] edges@[i].1@)
+        implies expected.contains(edges@[i].0@) by {
+        if i == 0 {} else if i == 1 {} else if i == 2 {} else if i == 3 {} else {}
+    }
+    assert(policy::closed_inputs(edges@, expected));
+    assert(seeds@.subset_of(expected)); assert(reached@.subset_of(expected));
+    expect(reached.contains(input.as_str()) && reached.contains(extra.as_str()) && !reached.contains(other.as_str()));
+}
+
+#[cfg_attr(not(verus_keep_ghost), test)]
+fn only_four_filemap_edge_kinds_propagate_input_requirements() {
+    proof { reveal_strlit("compile"); reveal_strlit("build-input"); reveal_strlit("runtime-input");
+        reveal_strlit("test-execution"); reveal_strlit("ownership"); }
+    expect(policy::carries_input("compile")); expect(policy::carries_input("build-input"));
+    expect(policy::carries_input("runtime-input")); expect(policy::carries_input("test-execution"));
+    expect(!policy::carries_input("ownership"));
+}
 
 #[cfg_attr(not(verus_keep_ghost), test)]
 fn bound_and_absent_require_at_least_one_binding() {

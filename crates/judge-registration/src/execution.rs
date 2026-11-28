@@ -129,15 +129,91 @@ impl Scheduling {
     pub fn conflicts(&self, a: &str, b: &str) -> bool {
         let a = &self.claims[a];
         let b = &self.claims[b];
-        a.resources.iter().any(|r| b.resources.contains(r))
-            || a.outputs.iter().any(|x| {
-                b.outputs.iter().any(|y| {
-                    std::path::Path::new(x).starts_with(y) || std::path::Path::new(y).starts_with(x)
-                })
-            })
+        claims_conflict(
+            &a.resources,
+            &b.resources,
+            &a.outputs,
+            &b.outputs,
+            &NativePaths,
+        )
     }
 }
 verus! {
+
+/// Component decomposition and equality are supplied by the platform's path library.
+pub trait OutputPaths {
+    spec fn prefix(&self, path: &String, ancestor: &String) -> bool;
+    fn starts_with(&self, path: &String, ancestor: &String) -> (matches: bool)
+        ensures matches == self.prefix(path, ancestor);
+}
+
+#[derive(Clone, Copy)]
+pub enum ClaimKind { Resource, Output }
+
+pub open spec fn conflicting_names<P: OutputPaths>(
+    kind: ClaimKind, a: &String, b: &String, paths: &P,
+) -> bool {
+    match kind {
+        ClaimKind::Resource => a@ == b@,
+        ClaimKind::Output => paths.prefix(a, b) || paths.prefix(b, a),
+    }
+}
+
+pub open spec fn conflicting_row<P: OutputPaths>(
+    kind: ClaimKind, a: &String, row: Seq<String>, paths: &P,
+) -> bool {
+    exists|i: int| 0 <= i < row.len() && conflicting_names(kind, a, &#[trigger] row[i], paths)
+}
+
+pub open spec fn conflicting_rows<P: OutputPaths>(
+    kind: ClaimKind, left: Seq<String>, right: Seq<String>, paths: &P,
+) -> bool {
+    exists|i: int| 0 <= i < left.len() && conflicting_row(kind, &#[trigger] left[i], right, paths)
+}
+
+fn conflicts_with_row<P: OutputPaths>(kind: ClaimKind, name: &String, row: &[String], paths: &P)
+    -> (conflict: bool)
+    ensures conflict == conflicting_row(kind, name, row@, paths),
+{
+    for i in 0..row.len()
+        invariant forall|j: int| 0 <= j < i ==> !conflicting_names(kind, name, &#[trigger] row@[j], paths),
+    {
+        let other = &row[i];
+        let matches = match kind {
+            ClaimKind::Resource => name.as_str() == other.as_str(),
+            ClaimKind::Output => paths.starts_with(name, other) || paths.starts_with(other, name),
+        };
+        if matches {
+            assert(conflicting_names(kind, name, &row@[i as int], paths));
+            return true;
+        }
+    }
+    false
+}
+
+fn claims_overlap<P: OutputPaths>(kind: ClaimKind, left: &[String], right: &[String], paths: &P)
+    -> (conflict: bool)
+    ensures conflict == conflicting_rows(kind, left@, right@, paths),
+{
+    for i in 0..left.len()
+        invariant forall|j: int| 0 <= j < i ==> !conflicting_row(kind, &#[trigger] left@[j], right@, paths),
+    {
+        if conflicts_with_row(kind, &left[i], right, paths) {
+            assert(conflicting_row(kind, &left@[i as int], right@, paths));
+            return true;
+        }
+    }
+    false
+}
+
+pub fn claims_conflict<P: OutputPaths>(resources: &[String], other_resources: &[String],
+    outputs: &[String], other_outputs: &[String], paths: &P) -> (conflict: bool)
+    ensures conflict == (conflicting_rows(ClaimKind::Resource, resources@, other_resources@, paths)
+        || conflicting_rows(ClaimKind::Output, outputs@, other_outputs@, paths)),
+{
+    claims_overlap(ClaimKind::Resource, resources, other_resources, paths)
+        || claims_overlap(ClaimKind::Output, outputs, other_outputs, paths)
+}
 
 pub open spec fn claim_named(claims: Seq<&String>, name: Seq<char>) -> bool {
     exists|j: int| 0 <= j < claims.len() && #[trigger] claims[j]@ == name
@@ -182,6 +258,16 @@ pub fn claims_cover_operations(operations: &[&String], claims: &[&String]) -> (c
     true
 }
 
+}
+
+#[cfg(not(verus_keep_ghost))]
+struct NativePaths;
+
+#[cfg(not(verus_keep_ghost))]
+impl OutputPaths for NativePaths {
+    fn starts_with(&self, path: &String, ancestor: &String) -> bool {
+        std::path::Path::new(path).starts_with(ancestor)
+    }
 }
 
 /// Interpret the complete host policy before tool observation or operation effects.

@@ -16,6 +16,61 @@ mod registration_contract;
 
 verus! {
 #[cfg_attr(not(verus_keep_ghost), test)]
+fn transition_reader_and_full_planning_preserve_bound_reader_and_retirement_order() {
+    use registration::ci_transition::{TransitionReader, transition_reader, full_planning};
+    expect(matches!(transition_reader(Some(4u8), false), TransitionReader::Observed(4)));
+    expect(matches!(transition_reader(Some(9u8), true), TransitionReader::Observed(9)));
+    expect(matches!(transition_reader(None::<u8>, true), TransitionReader::Configured));
+    expect(matches!(transition_reader(None::<u8>, false), TransitionReader::History));
+    expect(matches!(full_planning(true, 0), Ok(true)));
+    expect(matches!(full_planning(true, 1), Err(_)));
+    expect(matches!(full_planning(false, 1), Ok(false)));
+}
+
+#[cfg_attr(not(verus_keep_ghost), test)]
+fn workflow_removed_owner_and_optional_replacement_use_candidate_declarations() {
+    use registration::workflow_views::{retired_owner, replacement_exists};
+    expect(retired_owner(false, false)); expect(!retired_owner(true, false));
+    expect(!retired_owner(false, true)); expect(!retired_owner(true, true));
+    expect(replacement_exists(false, false).is_ok()); expect(replacement_exists(true, true).is_ok());
+    expect(replacement_exists(true, false).is_err());
+}
+
+struct ConfigToken { id: u8 }
+impl registration::ConfigurationEntry for ConfigToken {
+    closed spec fn named(&self, config: &str) -> bool { self.id == 1 && config@ == "active"@ }
+    fn matches_config(&self, config: &str) -> (yes: bool) { self.id == 1 && config == "active" }
+    closed spec fn same(&self, other: &Self) -> bool { self.id == other.id }
+    fn same_edge(&self, other: &Self) -> (same: bool) { self.id == other.id }
+}
+
+#[cfg_attr(not(verus_keep_ghost), test)]
+fn configuration_selects_first_exact_row_and_rejects_only_active_duplicates() {
+    use registration::{ConfigurationEntry, active_configuration, unique_active_edges};
+    proof { reveal_strlit("active"); reveal_strlit("other"); }
+    let shared = vec![ConfigToken {id: 3}, ConfigToken {id: 3}];
+    let options = vec![ConfigToken {id: 3}, ConfigToken {id: 1}, ConfigToken {id: 1}];
+    let a = active_configuration(&options, "active");
+    assert(!options@[0].named("active") && options@[1].named("active"));
+    expect(matches!(a, Some(1)));
+    expect(active_configuration(&options, "other").is_none());
+    let active = vec![ConfigToken {id: 5}, ConfigToken {id: 2}];
+    let repeated = vec![ConfigToken {id: 5}, ConfigToken {id: 2}, ConfigToken {id: 5}];
+    let cross = vec![ConfigToken {id: 2}, ConfigToken {id: 3}];
+    let ok = unique_active_edges(&shared, &active);
+    let duplicate = unique_active_edges(&shared, &repeated);
+    let duplicate_shared = unique_active_edges(&shared, &cross);
+    assert forall|i: int| 0 <= i < active.len() implies #[trigger] registration::edge_is_new(shared@, active@, i) by {
+        if i == 0 { assert(active@[i].id == 5); } else { assert(active@[i].id == 2); }
+    }
+    assert(repeated@[0].same(&repeated@[2]));
+    assert(shared@[0].same(&cross@[1]));
+    assert(!registration::edge_is_new(shared@, repeated@, 2));
+    assert(!registration::edge_is_new(shared@, cross@, 1));
+    expect(ok && !duplicate && !duplicate_shared);
+}
+
+#[cfg_attr(not(verus_keep_ghost), test)]
 fn collection_replies_keep_units_planning_or_original_error_and_match_scope() {
     use registration::impact_views::{CollectionOutcome, collection_outcome, scope_matches, migration_units_match};
     expect(matches!(collection_outcome(Some(3u8), Err::<u8, _>(9u8)), CollectionOutcome::Needed(3)));

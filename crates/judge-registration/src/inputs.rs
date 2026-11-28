@@ -520,8 +520,9 @@ pub fn required_plan_files(
     let plans = crate::execution::plans(r.filemap())?;
     let methods = crate::execution::methods(r.projects())?;
     let nodes = r.node_data();
-    let mut needed = selected.clone();
+    let mut needed = vstd::hash_set::StringHashSet::new();
     for test in selected {
+        needed.insert(test.clone());
         let definition = nodes
             .get(test)
             .and_then(|n| n.unique())
@@ -536,71 +537,55 @@ pub fn required_plan_files(
             needed.insert(format!("tool:{}", method[0].tool));
         }
     }
-    needed.extend(
-        nodes
-            .iter()
-            .filter(|(_, n)| n.kind == NodeKind::Judge)
-            .map(|(id, _)| id.clone()),
-    );
+    for (id, node) in &nodes {
+        if node.kind == NodeKind::Judge {
+            needed.insert(id.clone());
+        }
+    }
     if let Some(id) = r.config()["facts_git"]["input"].as_str() {
         needed.insert(format!("input:{id}"));
     }
     // The whitelist carries dependencies only in their declared direction.
     // Reverse it to obtain the prerequisites of the chosen consumers.
     let mut edges = Vec::new();
-    for file in r.filemap()["files"].as_array().unwrap() {
-        for edge in file["edges"].as_array().unwrap() {
-            edges.push((
-                format!("file:{}", file["path"].as_str().unwrap()),
-                edge.clone(),
-            ));
-        }
-    }
-    for edge in r.filemap()["project_edges"].as_array().unwrap() {
-        edges.push((edge["from"].as_str().unwrap().to_owned(), edge.clone()));
-    }
-    for (from, edge) in &edges {
-        for node in [from.as_str(), edge["to"].as_str().unwrap()] {
+    let mut declared = |source: &str, edge: &Value| -> Result<(), String> {
+        let consumer = edge["to"].as_str().unwrap();
+        for node in [source, consumer] {
             if !nodes.contains_key(node) {
                 return Err(format!("E_REFERENCE: unknown input dependency {node}"));
             }
         }
-    }
-    loop {
-        let size = needed.len();
-        for (from, edge) in &edges {
-            if needed.contains(edge["to"].as_str().unwrap())
-                && matches!(
-                    edge["kind"].as_str(),
-                    Some("compile" | "build-input" | "runtime-input" | "test-execution")
-                )
-            {
-                needed.insert(from.clone());
-            }
-        }
-        // Closure bindings are validated against explicit FILEMAP edges above.
-        for binding in r.config()["input_closure"]["bindings"]
-            .as_array()
-            .into_iter()
-            .flatten()
+        if edge["kind"]
+            .as_str()
+            .is_some_and(crate::verified_input_coverage::carries_input)
         {
-            if needed.contains(binding["consumer"].as_str().unwrap()) {
-                needed.extend(
-                    binding["inputs"]
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .map(|v| v.as_str().unwrap().to_owned()),
-                );
-            }
+            edges.push((source.to_owned(), consumer.to_owned()));
         }
-        if needed.len() == size {
-            break;
+        Ok(())
+    };
+    for file in r.filemap()["files"].as_array().unwrap() {
+        let source = format!("file:{}", file["path"].as_str().unwrap());
+        for edge in file["edges"].as_array().unwrap() {
+            declared(&source, edge)?;
         }
     }
+    for edge in r.filemap()["project_edges"].as_array().unwrap() {
+        declared(edge["from"].as_str().unwrap(), edge)?;
+    }
+    for binding in r.config()["input_closure"]["bindings"]
+        .as_array()
+        .into_iter()
+        .flatten()
+    {
+        let consumer = binding["consumer"].as_str().unwrap();
+        for input in binding["inputs"].as_array().unwrap() {
+            edges.push((input.as_str().unwrap().to_owned(), consumer.to_owned()));
+        }
+    }
+    let needed = crate::verified_input_coverage::input_closure(&edges, needed);
     Ok(all
         .into_iter()
-        .filter(|id| needed.contains(&format!("input:{id}")))
+        .filter(|id| needed.contains(format!("input:{id}").as_str()))
         .collect())
 }
 
