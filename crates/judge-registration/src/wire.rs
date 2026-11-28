@@ -265,7 +265,7 @@ impl Response {
     }
 
     pub(crate) fn add_finding(&mut self, severity: Status, finding: Finding) {
-        self.status = self.status.max(severity);
+        self.status = self.status.with_finding(severity);
         self.findings.push(finding);
     }
 }
@@ -281,9 +281,12 @@ pub struct Finding {
     pub causes: Vec<String>,
 }
 
-#[cfg(not(verus_keep_ghost))]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+use vstd::prelude::*;
+
+verus! {
+#[derive(Clone, Copy)]
+#[cfg_attr(not(verus_keep_ghost), derive(Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize))]
+#[cfg_attr(not(verus_keep_ghost), serde(rename_all = "lowercase"))]
 pub enum Status {
     Pass,
     Warn,
@@ -291,9 +294,33 @@ pub enum Status {
     Error,
 }
 
-#[cfg(not(verus_keep_ghost))]
 impl Status {
-    pub fn exit_code(self) -> u8 {
+    pub open spec fn severity(self) -> nat {
+        match self { Self::Pass => 0, Self::Warn => 1, Self::Fail => 2, Self::Error => 3 }
+    }
+
+    pub fn with_finding(self, finding: Self) -> (status: Self)
+        ensures status.severity() == if self.severity() >= finding.severity() {
+            self.severity()
+        } else {
+            finding.severity()
+        },
+    {
+        match (self, finding) {
+            (Self::Error, _) | (_, Self::Error) => Self::Error,
+            (Self::Fail, _) | (_, Self::Fail) => Self::Fail,
+            (Self::Warn, _) | (_, Self::Warn) => Self::Warn,
+            _ => Self::Pass,
+        }
+    }
+
+    pub fn exit_code(self) -> (code: u8)
+        ensures match self {
+            Self::Pass | Self::Warn => code == 0,
+            Self::Fail => code == 1,
+            Self::Error => code == 2,
+        },
+    {
         match self {
             Self::Pass | Self::Warn => 0,
             Self::Fail => 1,
@@ -302,9 +329,6 @@ impl Status {
     }
 }
 
-use vstd::prelude::*;
-
-verus! {
 fn is_lower_hex_digit(byte: u8) -> (valid: bool)
     ensures valid == (48 <= byte <= 57 || 97 <= byte <= 102),
 {
