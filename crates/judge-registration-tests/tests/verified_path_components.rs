@@ -15,6 +15,62 @@ use vstd::vpanic as panic;
 mod registration_contract;
 
 verus! {
+#[cfg_attr(not(verus_keep_ghost), test)]
+fn full_registry_checks_each_declared_selection_field() {
+    use registration::registry_selection_matches as selected;
+    expect(selected(false, false, false, false, false, false, false));
+    expect(selected(true, true, true, true, true, true, true));
+    expect(!selected(true, false, true, true, true, true, true));
+    expect(!selected(true, true, false, true, true, true, true));
+    expect(!selected(true, true, true, false, true, true, true));
+    expect(!selected(true, true, true, true, false, true, true));
+    expect(!selected(true, true, true, true, true, false, true));
+    expect(!selected(true, true, true, true, true, true, false));
+}
+
+#[cfg_attr(not(verus_keep_ghost), test)]
+fn full_registry_requires_both_roots_digest_and_exact_disk_bytes() {
+    use registration::{admitted_registration, registry_binding_matches, registry_bytes_match};
+    proof { reveal_strlit("expected"); reveal_strlit("different"); }
+    expect(registry_binding_matches("expected", "expected", true, true));
+    expect(!registry_binding_matches("different", "expected", true, true));
+    expect(!registry_binding_matches("expected", "expected", false, true));
+    expect(!registry_binding_matches("expected", "expected", true, false));
+    let original: &[u8] = &[123, 125, 10];
+    let changed_byte: &[u8] = &[123, 125, 32];
+    let (removed_byte, _) = original.split_at(2);
+    expect(registry_bytes_match(original, original));
+    expect(!registry_bytes_match(original, changed_byte));
+    expect(!registry_bytes_match(original, removed_byte));
+    expect(matches!(admitted_registration(true, true, 7u8), Some(7)));
+    expect(admitted_registration(false, true, 7u8).is_none());
+    expect(admitted_registration(true, false, 7u8).is_none());
+}
+
+#[cfg(verus_keep_ghost)]
+fn full_context_requires_fixed_identities_operation_and_supported_mode() {
+    use registration::{context_identity_matches, context_mode_matches};
+    proof {
+        reveal_strlit("base"); reveal_strlit("head"); reveal_strlit("validate.delta");
+        reveal_strlit("check"); reveal_strlit("delivery"); reveal_strlit("integration");
+    }
+    let base = Some("base");
+    let head = Some("head");
+    let operation = Some("validate.delta");
+    expect(context_identity_matches(true, base, head, base, operation, "base", "head"));
+    expect(!context_identity_matches(false, base, head, base, operation, "base", "head"));
+    expect(!context_identity_matches(true, head, head, base, operation, "base", "head"));
+    expect(!context_identity_matches(true, base, base, base, operation, "base", "head"));
+    expect(!context_identity_matches(true, base, head, head, operation, "base", "head"));
+    expect(!context_identity_matches(true, base, head, base, Some("check"), "base", "head"));
+    expect(!context_identity_matches(true, base, head, base, None, "base", "head"));
+    expect(context_mode_matches(false, None));
+    expect(context_mode_matches(true, Some("integration")));
+    expect(context_mode_matches(true, Some("delivery")));
+    expect(!context_mode_matches(true, Some("check")));
+    expect(!context_mode_matches(true, None));
+}
+
 #[cfg(verus_keep_ghost)]
 fn first_inventory_requires_all_proposed_documents_and_inactive_enforcement() {
     use registration::initial::initial_state;

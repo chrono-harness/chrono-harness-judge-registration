@@ -993,17 +993,20 @@ fn context_and_config_identity_mismatch() {
     let h = Host::new();
     let mut c = h.context();
     c["candidate"] = h.base.clone().into();
-    let (exit, r) = h.run_context(c);
+    let (exit, r) = h.run_context(c.clone());
     assert_eq!(exit, 2);
     assert!(finding(&r, "E_CONTEXT_MISMATCH"), "{r:#}");
     let p = h.root().join(".chrono-harness/config.json");
     let mut bytes = fs::read(&p).unwrap();
     bytes.push(b' ');
     fs::write(&p, bytes).unwrap();
-    let (exit, r) = h.run();
+    let (exit, r) = h.run_context(c);
     assert_eq!(exit, 2);
     assert!(finding(&r, "E_CONFIG_MISMATCH"), "{r:#}");
+    assert!(!finding(&r, "E_CONTEXT_MISMATCH"), "{r:#}");
+    assert!(r["outputs"].get("registration_view").is_none(), "{r:#}");
 }
+
 #[test]
 fn strict_five_schemas_duplicate_keys_ids_and_unknown_fields() {
     for name in ["config", "judges", "projects", "FILEMAP", "workflow"] {

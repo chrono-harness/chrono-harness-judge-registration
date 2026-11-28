@@ -265,6 +265,79 @@ pub struct TestBinding {
     pub operation: String,
 }
 
+verus! {
+pub fn default_test_action(
+    execute: bool, project: bool, test_kind: bool, kind_missing: bool,
+    tests_for_declared: bool, test_script_missing: bool,
+) -> (bind: bool)
+    ensures bind == (execute && if project {
+        test_kind || kind_missing
+    } else {
+        tests_for_declared || test_script_missing
+    }),
+{
+    execute && if project {
+        test_kind || kind_missing
+    } else {
+        tests_for_declared || test_script_missing
+    }
+}
+
+pub fn explicit_groups_allowed(project: bool, test_kind: bool) -> (allowed: bool)
+    ensures allowed == (project && test_kind),
+{
+    project && test_kind
+}
+
+pub fn includes_default_group(count: usize, legacy: bool) -> (valid: bool)
+    ensures valid == (count != 0 && legacy),
+{
+    count != 0 && legacy
+}
+
+pub fn explicit_action_key(key: Option<&str>) -> (action: Result<&str, ()>)
+    ensures match key {
+        Some(text) => action == Ok(text),
+        None => action == Err(()),
+    },
+{
+    key.ok_or(())
+}
+
+pub enum TestActionError {
+    EmptyOrRepeated,
+    Missing,
+}
+
+pub fn test_action<T>(test: &str, key: &str, new_key: bool, action: Option<T>)
+    -> (result: Result<T, TestActionError>)
+    ensures match result {
+        Ok(value) => test@.len() != 0 && key@.len() != 0 && new_key && action == Some(value),
+        Err(TestActionError::EmptyOrRepeated) => test@.len() == 0 || key@.len() == 0 || !new_key,
+        Err(TestActionError::Missing) => test@.len() != 0 && key@.len() != 0 && new_key && action is None,
+    },
+{
+    if test.is_empty() || key.is_empty() || !new_key {
+        Err(TestActionError::EmptyOrRepeated)
+    } else {
+        action.ok_or(TestActionError::Missing)
+    }
+}
+
+pub fn duplicate_test_identity(existing: bool, explicit: bool, earlier_explicit: bool)
+    -> (reject: bool)
+    ensures reject == (existing && (explicit || earlier_explicit)),
+{
+    existing && (explicit || earlier_explicit)
+}
+
+pub fn append_declaration<T>(values: &mut Vec<T>, declaration: T)
+    ensures final(values)@ == old(values)@.push(declaration),
+{
+    values.push(declaration);
+}
+}
+
 /// Shared by full and scoped consumers. Legacy scripts retain their single execute alias.
 #[cfg(not(verus_keep_ghost))]
 pub fn test_bindings(projects: &Value) -> Result<BTreeMap<String, Vec<TestBinding>>, String> {
@@ -278,8 +351,11 @@ pub fn test_bindings(projects: &Value) -> Result<BTreeMap<String, Vec<TestBindin
             let id = row["id"].as_str().ok_or("project ID missing")?;
             let owner = format!("{prefix}:{id}");
             let actions = row["actions"].as_object().ok_or("actions missing")?;
+            let project = collection == "projects";
+            let test_kind = row["kind"] == "test";
+            let is_explicit = row.get("test_groups").is_some();
             let groups = if let Some(groups) = row.get("test_groups") {
-                if collection != "projects" || row["kind"] != "test" {
+                if !explicit_groups_allowed(project, test_kind) {
                     return Err(format!(
                         "E_TEST_BINDING: test_groups requires a test project: {owner}"
                     ));
@@ -287,7 +363,7 @@ pub fn test_bindings(projects: &Value) -> Result<BTreeMap<String, Vec<TestBindin
                 let groups = groups
                     .as_object()
                     .ok_or("E_TEST_BINDING: test_groups must be a mapping")?;
-                if groups.is_empty() || !groups.contains_key(id) {
+                if !includes_default_group(groups.len(), groups.contains_key(id)) {
                     return Err(format!(
                         "E_TEST_BINDING: test_groups must include legacy identity {id}"
                     ));
@@ -297,32 +373,34 @@ pub fn test_bindings(projects: &Value) -> Result<BTreeMap<String, Vec<TestBindin
                     .map(|(test, action)| {
                         Ok((
                             test.as_str(),
-                            action
-                                .as_str()
-                                .ok_or("E_TEST_BINDING: action key must be a string")?,
+                            explicit_action_key(action.as_str())
+                                .map_err(|()| "E_TEST_BINDING: action key must be a string")?,
                         ))
                     })
                     .collect::<Result<Vec<_>, String>>()?
-            } else if actions.contains_key("execute")
-                && (collection == "projects"
-                    && (row["kind"] == "test" || row.get("kind").is_none())
-                    || collection == "scripts"
-                        && (row.get("tests_for").is_some() || row.get("test_script").is_none()))
-            {
+            } else if default_test_action(
+                actions.contains_key("execute"),
+                project,
+                test_kind,
+                row.get("kind").is_none(),
+                row.get("tests_for").is_some(),
+                row.get("test_script").is_none(),
+            ) {
                 vec![(id, "execute")]
             } else {
                 vec![]
             };
             let mut selected = BTreeSet::new();
             for (test, key) in groups {
-                if test.is_empty() || key.is_empty() || !selected.insert(key) {
-                    return Err(format!(
-                        "E_TEST_BINDING: empty or repeated action binding: {owner}"
-                    ));
-                }
-                let action = actions
-                    .get(key)
-                    .ok_or_else(|| format!("E_TEST_BINDING: {owner} has no action {key}"))?;
+                let action = test_action(test, key, selected.insert(key), actions.get(key))
+                    .map_err(|error| match error {
+                        TestActionError::EmptyOrRepeated => {
+                            format!("E_TEST_BINDING: empty or repeated action binding: {owner}")
+                        }
+                        TestActionError::Missing => {
+                            format!("E_TEST_BINDING: {owner} has no action {key}")
+                        }
+                    })?;
                 let operation = action["operation"]
                     .as_str()
                     .ok_or("E_TEST_BINDING: operation missing")?;
@@ -332,18 +410,20 @@ pub fn test_bindings(projects: &Value) -> Result<BTreeMap<String, Vec<TestBindin
                     operation: operation.into(),
                 };
                 let identity = format!("test:{test}");
-                if out.contains_key(&identity)
-                    && (row.get("test_groups").is_some() || explicit.contains(&identity))
-                {
+                if duplicate_test_identity(
+                    out.contains_key(&identity),
+                    is_explicit,
+                    explicit.contains(&identity),
+                ) {
                     return Err(format!(
                         "E_TEST_BINDING: duplicate test identity {identity}"
                     ));
                 }
-                if row.get("test_groups").is_some() {
+                if is_explicit {
                     explicit.insert(identity.clone());
                 }
                 // Legacy ambiguity stays visible for DELTA-local adjudication, never a winner.
-                out.entry(identity).or_default().push(binding);
+                append_declaration(out.entry(identity).or_default(), binding);
             }
         }
     }
@@ -374,7 +454,7 @@ pub fn methods(projects: &Value) -> Result<BTreeMap<String, Vec<Method>>, String
                     output_contract: serde_json::from_value(action["output_contract"].clone())
                         .map_err(|e| e.to_string())?,
                 };
-                out.entry(operation.into()).or_default().push(method);
+                append_declaration(out.entry(operation.into()).or_default(), method);
             }
         }
     }
