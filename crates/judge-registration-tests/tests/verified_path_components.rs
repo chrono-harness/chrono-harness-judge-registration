@@ -16,6 +16,42 @@ mod registration_contract;
 
 verus! {
 #[cfg_attr(not(verus_keep_ghost), test)]
+fn collection_replies_keep_units_planning_or_original_error_and_match_scope() {
+    use registration::impact_views::{CollectionOutcome, collection_outcome, scope_matches, migration_units_match};
+    expect(matches!(collection_outcome(Some(3u8), Err::<u8, _>(9u8)), CollectionOutcome::Needed(3)));
+    expect(matches!(collection_outcome(None::<u8>, Err::<u8, _>(9u8)), CollectionOutcome::Error(9)));
+    expect(matches!(collection_outcome(Some(3u8), Ok::<u8, u8>(7)), CollectionOutcome::Ready(7)));
+    expect(matches!(collection_outcome(None::<u8>, Ok::<u8, u8>(7)), CollectionOutcome::Ready(7)));
+    expect(scope_matches(true, false, false));
+    expect(scope_matches(true, true, true));
+    expect(!scope_matches(false, false, true));
+    expect(!scope_matches(true, true, false));
+    let a = "a".to_owned();
+    let b = "b".to_owned();
+    proof { reveal_strlit("a"); reveal_strlit("b"); }
+    let units = vec![a.clone(), b.clone()];
+    let exchanged = vec![b.clone(), a.clone()];
+    let shorter = vec![a];
+    expect(migration_units_match(&units, &units));
+    let swapped = migration_units_match(&units, &exchanged);
+    assert(units@[0]@ != exchanged@[0]@);
+    expect(!swapped);
+    expect(!migration_units_match(&units, &shorter));
+}
+
+#[cfg_attr(not(verus_keep_ghost), test)]
+fn fixed_unit_assignments_preserve_candidate_base_and_first_error() {
+    use registration::collection::assignments;
+    let old = || -> (out: Result<u8, u8>) ensures out == Ok::<u8, u8>(7) { Ok(7u8) };
+    let rejected = || -> (out: Result<u8, u8>) ensures out == Err::<u8, u8>(3) { Err(3u8) };
+    expect(matches!(assignments(Ok(5), true, true, old), Ok((5, Some(7)))));
+    expect(matches!(assignments(Ok(5), false, true, rejected), Ok((5, None))));
+    expect(matches!(assignments(Ok(5), true, false, rejected), Ok((5, None))));
+    expect(matches!(assignments(Err(9), true, true, rejected), Err(9)));
+    expect(matches!(assignments(Ok(5), true, true, rejected), Err(3)));
+}
+
+#[cfg_attr(not(verus_keep_ghost), test)]
 fn full_registry_checks_each_declared_selection_field() {
     use registration::registry_selection_matches as selected;
     expect(selected(false, false, false, false, false, false, false));

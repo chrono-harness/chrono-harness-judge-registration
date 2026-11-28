@@ -2,6 +2,60 @@
 #![allow(unexpected_cfgs)]
 pub use super::snapshot_queries::{EndpointDocuments, interpret_pair};
 
+use vstd::prelude::*;
+
+verus! {
+#[cfg_attr(not(verus_keep_ghost), derive(serde::Serialize))]
+#[cfg_attr(not(verus_keep_ghost), serde(rename_all = "snake_case"))]
+pub enum CollectionOutcome<U, P, E> {
+    Needed(U),
+    Ready(P),
+    Error(E),
+}
+
+/// A completed projection publishes planning even if it previously requested originals.
+/// Only a failed projection can request those exact units or return its original error.
+pub fn collection_outcome<U, P, E>(needed: Option<U>, projection: Result<P, E>)
+    -> (out: CollectionOutcome<U, P, E>)
+    ensures out == match projection {
+        Ok(planning) => CollectionOutcome::Ready(planning),
+        Err(error) => match needed {
+            Some(units) => CollectionOutcome::Needed(units),
+            None => CollectionOutcome::Error(error),
+        },
+    },
+{
+    match (needed, projection) {
+        (_, Ok(planning)) => CollectionOutcome::Ready(planning),
+        (Some(units), Err(_)) => CollectionOutcome::Needed(units),
+        (None, Err(error)) => CollectionOutcome::Error(error),
+    }
+}
+
+pub fn scope_matches(checkout: bool, collection: bool, collect_scope: bool) -> (ok: bool)
+    ensures ok == (checkout && (collection ==> collect_scope)),
+{
+    checkout && (!collection || collect_scope)
+}
+
+pub fn migration_units_match(original: &[String], requested: &[String]) -> (ok: bool)
+    ensures ok == (original.len() == requested.len() && forall|j:int| 0 <= j < original.len()
+        ==> #[trigger] original@[j]@ == requested@[j]@),
+{
+    if original.len() != requested.len() { return false; }
+    for i in 0..original.len()
+        invariant original.len() == requested.len(),
+            forall|j:int| 0 <= j < i ==> #[trigger] original@[j]@ == requested@[j]@,
+    {
+        if original[i].as_str() != requested[i].as_str() {
+            assert(original@[i as int]@ != requested@[i as int]@);
+            return false;
+        }
+    }
+    true
+}
+}
+
 #[cfg(not(verus_keep_ghost))]
 use crate::facts;
 #[cfg(not(verus_keep_ghost))]
@@ -269,9 +323,11 @@ fn project(root: &Path, query: Query) -> Result<Value, String> {
         | Operation::Collection { request, migration } => (request, migration, true),
     };
     request.validate()?;
-    if root != request.candidate.root
-        || (collection && !matches!(request.scope, Some(crate::wire::Scope::Collect { .. })))
-    {
+    if !scope_matches(
+        root == request.candidate.root,
+        collection,
+        matches!(request.scope, Some(crate::wire::Scope::Collect { .. })),
+    ) {
         return Err("impact query requires its request checkout and matching scope".into());
     }
     let installed = std::cell::OnceCell::new();
@@ -288,7 +344,7 @@ fn project(root: &Path, query: Query) -> Result<Value, String> {
         }
         migration
             .as_ref()
-            .filter(|original| original.units == units)
+            .filter(|original| migration_units_match(&original.units, units))
             .map(|original| original.originals.clone())
             .ok_or_else(|| "missing original migration inputs for the selected units".to_owned())
     };
@@ -334,11 +390,7 @@ fn project(root: &Path, query: Query) -> Result<Value, String> {
     };
     let projected = project();
     let mut reply = if ci_collection {
-        match (needed.into_inner(), projected) {
-            (Some(units), Err(_)) => json!({"outcome":{"needed":units}}),
-            (_, Ok(planning)) => json!({"outcome":{"ready":planning}}),
-            (_, Err(error)) => json!({"outcome":{"error":error}}),
-        }
+        json!({"outcome":collection_outcome(needed.into_inner(), projected)})
     } else {
         match projected {
             Ok(value) => value,

@@ -13,6 +13,32 @@ pub(crate) fn declared_units<T, E, F>(declared: bool, read: F) -> (answer: Resul
 {
     if declared { read() } else { Ok(None) }
 }
+
+/// Candidate assignment is read first; historical assignment has meaning only for
+/// a base projection when that named unit was declared at the base.
+pub fn assignments<T, E, F>(candidate: Result<T, E>, base: bool, old_unit: bool, read_old: F)
+    -> (out: Result<(T, Option<T>), E>)
+    where F: FnOnce() -> Result<T, E>,
+    requires candidate.is_ok() && base && old_unit ==> read_old.requires(()),
+    ensures match candidate {
+        Err(error) => out == Err::<(T, Option<T>), E>(error),
+        Ok(current) => if base && old_unit {
+            exists|old: Result<T, E>| read_old.ensures((), old) && out == match old {
+                Ok(plans) => Ok((current, Some(plans))),
+                Err(error) => Err(error),
+            }
+        } else { out == Ok((current, None)) },
+    },
+{
+    let current = match candidate { Ok(value) => value, Err(error) => return Err(error) };
+    if base && old_unit {
+        match read_old() {
+            Ok(plans) => Ok((current, Some(plans))),
+            Err(error) => Err(error),
+        }
+    } else { Ok((current, None)) }
+}
+
 }
 
 #[cfg(not(verus_keep_ghost))]
