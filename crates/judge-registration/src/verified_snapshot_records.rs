@@ -72,6 +72,37 @@ fn valid_blob_digest(bytes: &[u8]) -> (valid: bool)
     true
 }
 
+/// Only an explicitly present, pinned program in the host bin can use a final symlink.
+pub fn installed_input_pin(
+    digest: Option<&str>, present: bool, host_bin: bool, registered_program: bool,
+) -> (pin: Option<&str>)
+    ensures pin == if present && host_bin && registered_program && retained_digest_valid(digest) {
+        digest
+    } else { None },
+{
+    if !present || !host_bin || !registered_program { return None; }
+    match digest {
+        Some(digest) if valid_blob_digest(digest.as_bytes()) => Some(digest),
+        _ => None,
+    }
+}
+
+pub fn admit_installed_input_location(inside_checkout: bool) -> (out: Result<(), &'static str>)
+    ensures out == if inside_checkout { Err("E_INPUT_PATH: installed tool input points inside checkout") }
+        else { Ok(()) },
+{
+    if inside_checkout { Err("E_INPUT_PATH: installed tool input points inside checkout") }
+    else { Ok(()) }
+}
+
+pub fn admit_installed_input_digest(expected: &str, actual: &str) -> (out: Result<(), &'static str>)
+    ensures out == if expected@ == actual@ { Ok(()) }
+        else { Err("E_INPUT_IDENTITY: installed tool input digest differs") },
+{
+    if expected == actual { Ok(()) }
+    else { Err("E_INPUT_IDENTITY: installed tool input digest differs") }
+}
+
 /// 同一 JSON 的原观察；缺键与非对应类型分别保留。
 pub struct RetainedObservation<'a, B> {
     pub object: bool,

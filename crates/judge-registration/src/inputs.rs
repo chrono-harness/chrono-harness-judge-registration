@@ -100,20 +100,16 @@ fn installed_input(
 ) -> Result<Option<(std::path::PathBuf, (String, u64))>, String> {
     let location = input["location"].as_str().ok_or("input location missing")?;
     let path = Path::new(location);
-    let Some(expected) = input["sha256"]
-        .as_str()
-        .filter(|digest| wire::is_digest(digest))
-    else {
+    let Some(expected) = installed_input_pin(
+        input["sha256"].as_str(),
+        input["presence"] == "present",
+        path.parent() == Some(Path::new(".chrono-harness/bin")),
+        config["tools"]
+            .as_array()
+            .is_some_and(|tools| tools.iter().any(|tool| tool["program"] == location)),
+    ) else {
         return Ok(None);
     };
-    if input["presence"] != "present"
-        || path.parent() != Some(Path::new(".chrono-harness/bin"))
-        || !config["tools"]
-            .as_array()
-            .is_some_and(|tools| tools.iter().any(|tool| tool["program"] == location))
-    {
-        return Ok(None);
-    }
     relative_path(location)?;
     let directory = checked_path(root, ".chrono-harness/bin")?;
     let link = directory.join(path.file_name().ok_or("missing installed input name")?);
@@ -126,18 +122,12 @@ fn installed_input(
     let target = std::fs::canonicalize(&link)
         .map_err(|error| format!("E_INPUT_PATH: {location}: {error}"))?;
     let checkout = std::fs::canonicalize(root).map_err(|error| error.to_string())?;
-    if target.starts_with(checkout) {
-        return Err(format!(
-            "E_INPUT_PATH: installed tool input points inside checkout: {location}"
-        ));
-    }
+    admit_installed_input_location(target.starts_with(checkout))
+        .map_err(|error| format!("{error}: {location}"))?;
     let identity = observe_file(&target)?
         .ok_or_else(|| format!("missing installed tool input: {location}"))?;
-    if identity.0 != expected {
-        return Err(format!(
-            "E_INPUT_IDENTITY: installed tool input digest differs: {location}"
-        ));
-    }
+    admit_installed_input_digest(expected, &identity.0)
+        .map_err(|error| format!("{error}: {location}"))?;
     Ok(Some((target, identity)))
 }
 

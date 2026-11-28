@@ -26,6 +26,35 @@ fn expect(value: bool)
     requires value,
 { if !value { panic!(); } }
 
+fn installed_program_link_requires_each_registration_condition(digest: &str)
+    requires policy::retained_digest_valid(Some(digest)),
+{
+    let selected = policy::installed_input_pin(Some(digest), true, true, true);
+    let original = match selected { Some(value) => value == digest, None => false };
+    expect(original);
+    expect(policy::installed_input_pin(Some(digest), false, true, true).is_none());
+    expect(policy::installed_input_pin(Some(digest), true, false, true).is_none());
+    expect(policy::installed_input_pin(Some(digest), true, true, false).is_none());
+    expect(policy::installed_input_pin(None, true, true, true).is_none());
+    proof {
+        reveal_strlit("short");
+        vstd::utf8::is_ascii_chars_encode_utf8("short"@);
+        assert(!policy::retained_digest_valid(Some("short")));
+    }
+    expect(policy::installed_input_pin(Some("short"), true, true, true).is_none());
+}
+
+#[cfg_attr(not(verus_keep_ghost), test)]
+fn installed_program_target_must_be_external_and_digest_equal() {
+    expect(policy::admit_installed_input_location(false).is_ok());
+    expect(policy::admit_installed_input_location(true).is_err());
+    let expected = "first";
+    let other = "second";
+    proof { reveal_strlit("first"); reveal_strlit("second"); }
+    expect(policy::admit_installed_input_digest(expected, expected).is_ok());
+    expect(policy::admit_installed_input_digest(expected, other).is_err());
+}
+
 #[cfg_attr(not(verus_keep_ghost), test)]
 fn object_shape_rejects_nonobjects_before_inspecting_fields() {
     let result = policy::validate_object_fields(None::<u64>, &["missing"], &[], &["unexpected"]);
@@ -412,6 +441,7 @@ fn retained_blob_checks_path_then_digest_then_length_and_preserves_boundary_valu
     }
     retained_blob_boundaries(path, digest, 0);
     retained_blob_boundaries(path, digest, u64::MAX);
+    installed_program_link_requires_each_registration_condition(digest);
 }
 
 #[cfg_attr(not(verus_keep_ghost), test)]
